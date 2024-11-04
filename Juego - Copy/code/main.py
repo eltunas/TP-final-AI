@@ -5,6 +5,7 @@ from alien import Alien, Extra
 from random import choice, randint
 from laser import Laser
 import os
+from AlgoritmoGenetico import GeneticAlgorithm
 import numpy as np
 import tensorflow as tf
 
@@ -57,44 +58,7 @@ class Game:
         self.laser_sound.set_volume(0.5)
         self.explosion_sound = pygame.mixer.Sound('../audio/explosion.wav')
         self.explosion_sound.set_volume(0.3)
-
-        #For rewards
-        self.last_score = 0
-        self.last_lives = 3
-        self.initial_lives = 3
-         # Definir las dimensiones de entrada y salida
-        input_size = 9  # Posición del jugador (2), alien más cercano (2 + 1 distancia), láser más cercano (2 + 1 distancia), obstáculo más cercano (2 + 1 distancia)
-        output_size = 3  # Tres acciones: izquierda, derecha, dispara
-
-        # Crear y entrenar el modelo
-        self.model = self.build_model(input_size, output_size)
-
-    def build_model(input_size, output_size):
-        model = tf.keras.models.Sequential([
-            tf.keras.layers.Dense(64, activation='relu', input_shape=(input_size,)),
-            tf.keras.layers.Dense(32, activation='relu'),
-            tf.keras.layers.Dense(output_size, activation='softmax')  # Softmax para obtener probabilidades de cada acción
-        ])
-        model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-        return model
-
-    # Preparar los datos de entrada
-    def preprocess_game_state(game_state):
-        # Extrae y normaliza los datos relevantes del estado del juego
-        player_pos = np.array(game_state['player_position'])
-        alien_pos, alien_distance = game_state['closest_alien']
-        laser_pos, laser_distance = game_state['closest_alien_laser']
-        obstacle_pos, obstacle_distance = game_state['closest_obstacle']
-        
-        # Asegurarse de que las posiciones sean números (si no existen, usar 0)
-        alien_pos = np.array(alien_pos) if alien_pos else np.zeros(2)
-        laser_pos = np.array(laser_pos) if laser_pos else np.zeros(2)
-        obstacle_pos = np.array(obstacle_pos) if obstacle_pos else np.zeros(2)
-        
-        # Concatenar todos los datos en un solo vector
-        input_data = np.concatenate([player_pos, alien_pos, [alien_distance], laser_pos, [laser_distance], obstacle_pos, [obstacle_distance]])
-        return input_data
-
+    
     def create_obstacle(self, x_start, y_start, offset_x):
         for row_index, row in enumerate(self.shape):
             for col_index, col in enumerate(row):
@@ -361,36 +325,57 @@ class Game:
 
         return game_state
 
-if __name__ == '__main__':
+# Parámetros del algoritmo genético
+population_size = 20
+mutation_rate = 0.1
+num_generations = 50
+input_size = 9  # Tamaño del vector de estado
+output_size = 3  # Tres acciones posibles: izquierda, derecha, disparar
+
+def main():
+    # Configuración de Pygame
     pygame.init()
     screen_width = 800
     screen_height = 600
-    game = Game(screen_width, screen_height)
+    game = Game(screen_width, screen_height)  # Instancia de la clase Game
     clock = pygame.time.Clock()
 
-    ALIENLASER = pygame.USEREVENT + 1
-    pygame.time.set_timer(ALIENLASER, 800)
+    # Crear una instancia del algoritmo genético
+    gen_algo = GeneticAlgorithm(population_size, mutation_rate, num_generations, input_size, output_size, game)
 
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == ALIENLASER:
-                game.alien_shoot()
+    for i in num_generations:
+        print("Generacion: ")
+        print(i)
 
-        # Ejemplo de uso
-        game_state = game.get_game_state()
-        input_data = game.preprocess_game_state(game_state)
-        input_data = input_data.reshape(1, -1)  # Ajustar la forma para que sea (1, input_size)
+        # Ejecutar el proceso evolutivo para entrenar la red
+        print("Entrenando la red neuronal mediante algoritmo genético...")
+        trained_model = gen_algo.evolve()  # Este será el mejor modelo entrenado
 
-        # Predecir la acción
-        action_probabilities = game.model.predict(input_data)
-        action = np.argmax(action_probabilities)  # 0 para izquierda, 1 para derecha, 2 para disparar
-        game.step(action)
+        # Usar el modelo entrenado para jugar el juego automáticamente
+        done = False
+        game.reset()  # Reiniciar el juego para la ejecución automática
+        print("Usando el mejor modelo para jugar el juego...")
+        
 
-        game.screen.fill((30, 30, 30))
-        game.run()
+        while not done:
+            # Obtener el estado del juego y procesarlo para el modelo
+            game_state = game.get_game_state()
+            input_data = gen_algo.preprocess_game_state(game_state).reshape(1, -1)
 
-        pygame.display.flip()
-        clock.tick(60)
+            # Obtener la acción basada en el modelo entrenado
+            action = np.argmax(trained_model.predict(input_data))
+            
+            # Ejecutar la acción en el juego
+            _, _, done = game.step(action)
+            
+            # Actualizar la pantalla y controlar la velocidad del bucle
+            game.run()
+            pygame.display.flip()
+            clock.tick(60)
+
+    # Finalizar Pygame
+    pygame.quit()
+    sys.exit()
+
+if __name__ == '__main__':
+    main()
