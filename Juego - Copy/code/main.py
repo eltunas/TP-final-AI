@@ -6,6 +6,7 @@ from random import choice, randint
 from laser import Laser
 import os
 import numpy as np
+import tensorflow as tf
 
 os.chdir(os.path.dirname(__file__))
 
@@ -61,6 +62,32 @@ class Game:
         self.last_score = 0
         self.last_lives = 3
         self.initial_lives = 3
+
+    def build_model(input_size, output_size):
+        model = tf.keras.models.Sequential([
+            tf.keras.layers.Dense(64, activation='relu', input_shape=(input_size,)),
+            tf.keras.layers.Dense(32, activation='relu'),
+            tf.keras.layers.Dense(output_size, activation='softmax')  # Softmax para obtener probabilidades de cada acción
+        ])
+        model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+        return model
+
+    # Preparar los datos de entrada
+    def preprocess_game_state(game_state):
+        # Extrae y normaliza los datos relevantes del estado del juego
+        player_pos = np.array(game_state['player_position'])
+        alien_pos, alien_distance = game_state['closest_alien']
+        laser_pos, laser_distance = game_state['closest_alien_laser']
+        obstacle_pos, obstacle_distance = game_state['closest_obstacle']
+        
+        # Asegurarse de que las posiciones sean números (si no existen, usar 0)
+        alien_pos = np.array(alien_pos) if alien_pos else np.zeros(2)
+        laser_pos = np.array(laser_pos) if laser_pos else np.zeros(2)
+        obstacle_pos = np.array(obstacle_pos) if obstacle_pos else np.zeros(2)
+        
+        # Concatenar todos los datos en un solo vector
+        input_data = np.concatenate([player_pos, alien_pos, [alien_distance], laser_pos, [laser_distance], obstacle_pos, [obstacle_distance]])
+        return input_data
 
     def create_obstacle(self, x_start, y_start, offset_x):
         for row_index, row in enumerate(self.shape):
@@ -192,6 +219,22 @@ class Game:
         self.victory_message()
 
     def step(self, action):
+        # Definir las dimensiones de entrada y salida
+        input_size = 9  # Posición del jugador (2), alien más cercano (2 + 1 distancia), láser más cercano (2 + 1 distancia), obstáculo más cercano (2 + 1 distancia)
+        output_size = 3  # Tres acciones: izquierda, derecha, dispara
+
+        # Crear y entrenar el modelo
+        model = self.build_model(input_size, output_size)
+
+        # Ejemplo de uso
+        game_state = game.get_game_state()
+        input_data = self.preprocess_game_state(game_state)
+        input_data = input_data.reshape(1, -1)  # Ajustar la forma para que sea (1, input_size)
+
+        # Predecir la acción
+        action_probabilities = model.predict(input_data)
+        action = np.argmax(action_probabilities)  # 0 para izquierda, 1 para derecha, 2 para disparar
+
         # Ejecutar la acción
         if action == 1:
             self.player.sprite.move(-1)
@@ -209,7 +252,7 @@ class Game:
         done = self.lives <= 0  # Indica si el juego terminó
 
         # Capturar el estado del juego
-        state = self.get_state_image()  # Ahora devuelve un diccionario
+        state = self.get_game_state()  # Ahora devuelve un diccionario
         state = np.expand_dims(state, axis=0)  # Agregar una dimensión para el batch
 
         # Calcular recompensa utilizando el diccionario
@@ -294,6 +337,42 @@ class Game:
 
         # Devolver como un diccionario
         return {'image': initial_image}  # Esto es correcto y debería funcionar
+
+    def get_closest(sprite_group, position):
+        """Devuelve el sprite más cercano en el grupo y su distancia a la posición dada."""
+        closest_sprite = None
+        min_distance = float('inf')
+        
+        for sprite in sprite_group.sprites():
+            distance = np.linalg.norm(np.array(sprite.rect.center) - np.array(position))
+            if distance < min_distance:
+                min_distance = distance
+                closest_sprite = sprite
+        
+        return closest_sprite, min_distance
+
+    def get_game_state(self):
+        """Obtiene el estado del juego, incluyendo los elementos más cercanos y la posición del jugador."""
+        player_pos = self.player.sprite.rect.center
+
+        # Alien más cercano
+        closest_alien, alien_distance = self.get_closest(self.aliens, player_pos)
+
+        # Láser de alien más cercano
+        closest_alien_laser, laser_distance = self.get_closest(self.alien_lasers, player_pos)
+
+        # Obstáculo más cercano
+        closest_obstacle, obstacle_distance = self.get_closest(self.blocks, player_pos)
+
+        # Crear un diccionario con el estado
+        game_state = {
+            'player_position': player_pos,
+            'closest_alien': (closest_alien.rect.center if closest_alien else None, alien_distance),
+            'closest_alien_laser': (closest_alien_laser.rect.center if closest_alien_laser else None, laser_distance),
+            'closest_obstacle': (closest_obstacle.rect.center if closest_obstacle else None, obstacle_distance)
+        }
+
+        return game_state
 
 if __name__ == '__main__':
     pygame.init()
