@@ -58,6 +58,11 @@ class Game:
         self.laser_sound.set_volume(0.5)
         self.explosion_sound = pygame.mixer.Sound('../audio/explosion.wav')
         self.explosion_sound.set_volume(0.3)
+
+        #For rewards
+        self.last_score = 0
+        self.last_lives = 3
+        self.initial_lives = 3
     
     def create_obstacle(self, x_start, y_start, offset_x):
         for row_index, row in enumerate(self.shape):
