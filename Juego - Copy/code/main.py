@@ -62,6 +62,12 @@ class Game:
         self.last_score = 0
         self.last_lives = 3
         self.initial_lives = 3
+         # Definir las dimensiones de entrada y salida
+        input_size = 9  # Posición del jugador (2), alien más cercano (2 + 1 distancia), láser más cercano (2 + 1 distancia), obstáculo más cercano (2 + 1 distancia)
+        output_size = 3  # Tres acciones: izquierda, derecha, dispara
+
+        # Crear y entrenar el modelo
+        self.model = self.build_model(input_size, output_size)
 
     def build_model(input_size, output_size):
         model = tf.keras.models.Sequential([
@@ -219,22 +225,6 @@ class Game:
         self.victory_message()
 
     def step(self, action):
-        # Definir las dimensiones de entrada y salida
-        input_size = 9  # Posición del jugador (2), alien más cercano (2 + 1 distancia), láser más cercano (2 + 1 distancia), obstáculo más cercano (2 + 1 distancia)
-        output_size = 3  # Tres acciones: izquierda, derecha, dispara
-
-        # Crear y entrenar el modelo
-        model = self.build_model(input_size, output_size)
-
-        # Ejemplo de uso
-        game_state = game.get_game_state()
-        input_data = self.preprocess_game_state(game_state)
-        input_data = input_data.reshape(1, -1)  # Ajustar la forma para que sea (1, input_size)
-
-        # Predecir la acción
-        action_probabilities = model.predict(input_data)
-        action = np.argmax(action_probabilities)  # 0 para izquierda, 1 para derecha, 2 para disparar
-
         # Ejecutar la acción
         if action == 1:
             self.player.sprite.move(-1)
@@ -250,10 +240,7 @@ class Game:
 
         # Calcular recompensa
         done = self.lives <= 0  # Indica si el juego terminó
-
-        # Capturar el estado del juego
-        state = self.get_game_state()  # Ahora devuelve un diccionario
-        state = np.expand_dims(state, axis=0)  # Agregar una dimensión para el batch
+        state = self.get_game_state()
 
         # Calcular recompensa utilizando el diccionario
         reward = self.calculate_reward(state, done)
@@ -391,6 +378,16 @@ if __name__ == '__main__':
                 sys.exit()
             if event.type == ALIENLASER:
                 game.alien_shoot()
+
+        # Ejemplo de uso
+        game_state = game.get_game_state()
+        input_data = game.preprocess_game_state(game_state)
+        input_data = input_data.reshape(1, -1)  # Ajustar la forma para que sea (1, input_size)
+
+        # Predecir la acción
+        action_probabilities = game.model.predict(input_data)
+        action = np.argmax(action_probabilities)  # 0 para izquierda, 1 para derecha, 2 para disparar
+        game.step(action)
 
         game.screen.fill((30, 30, 30))
         game.run()
