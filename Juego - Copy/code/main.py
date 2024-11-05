@@ -145,16 +145,14 @@ class Game:
                     laser.kill()
                     self.lives -= 1
                     if self.lives <= 0:
-                        pygame.quit()
-                        sys.exit()
+                        done = True
 
         if self.aliens:
             for alien in self.aliens:
                 pygame.sprite.spritecollide(alien, self.blocks, True)
 
                 if pygame.sprite.spritecollide(alien, self.player, False):
-                    pygame.quit()
-                    sys.exit()
+                    done = True
 
     def display_lives(self):
         for live in range(self.lives - 1):
@@ -288,13 +286,7 @@ class Game:
         self.extra = pygame.sprite.GroupSingle()
         self.extra_spawn_time = randint(40, 80)
 
-        # Obtener la imagen inicial del estado del juego
-        initial_image = self.get_state_image()  # Esto ahora devolverá solo el arreglo de numpy
-
-        # Devolver como un diccionario
-        return {'image': initial_image}  # Esto es correcto y debería funcionar
-
-    def get_closest(sprite_group, position):
+    def get_closest(self,sprite_group, position):
         """Devuelve el sprite más cercano en el grupo y su distancia a la posición dada."""
         closest_sprite = None
         min_distance = float('inf')
@@ -331,11 +323,11 @@ class Game:
         return game_state
 
 # Parámetros del algoritmo genético
-population_size = 20
+population_size = 2
 mutation_rate = 0.1
-num_generations = 50
-input_size = 9  # Tamaño del vector de estado
-output_size = 3  # Tres acciones posibles: izquierda, derecha, disparar
+num_generations = 10
+input_size = 11  # Tamaño del vector de estado
+output_size = 4  # Cuatro acciones posibles: izquierda, derecha, disparar, nada
 
 def main():
     # Configuración de Pygame
@@ -348,35 +340,46 @@ def main():
     # Crear una instancia del algoritmo genético
     gen_algo = GeneticAlgorithm(population_size, mutation_rate, num_generations, input_size, output_size, game)
 
-    for i in num_generations:
-        print("Generacion: ")
-        print(i)
+     
+    # Ejecutar el proceso evolutivo para entrenar la red
+    print("Entrenando la red neuronal mediante algoritmo genético...")
+    trained_model = gen_algo.evolve()  # Este será el mejor modelo entrenado
 
-        # Ejecutar el proceso evolutivo para entrenar la red
-        print("Entrenando la red neuronal mediante algoritmo genético...")
-        trained_model = gen_algo.evolve()  # Este será el mejor modelo entrenado
+    # Usar el modelo entrenado para jugar el juego automáticamente
+    done = False
+    
+    print("Usando el mejor modelo para jugar el juego...")
 
-        # Usar el modelo entrenado para jugar el juego automáticamente
-        done = False
-        game.reset()  # Reiniciar el juego para la ejecución automática
-        print("Usando el mejor modelo para jugar el juego...")
+    ALIENLASER = pygame.USEREVENT + 1
+    pygame.time.set_timer(ALIENLASER, 600)
+    
+
+    while not done:
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == ALIENLASER:
+                game.alien_shoot()
+
+        # Obtener el estado del juego y procesarlo para el modelo
+        game_state = game.get_game_state()
+        input_data = gen_algo.preprocess_game_state(game_state).reshape(1, -1)
+
+        # Obtener la acción basada en el modelo entrenado
+        action = np.argmax(trained_model.predict(input_data))
         
-
-        while not done:
-            # Obtener el estado del juego y procesarlo para el modelo
-            game_state = game.get_game_state()
-            input_data = gen_algo.preprocess_game_state(game_state).reshape(1, -1)
-
-            # Obtener la acción basada en el modelo entrenado
-            action = np.argmax(trained_model.predict(input_data))
-            
-            # Ejecutar la acción en el juego
-            _, _, done = game.step(action)
-            
-            # Actualizar la pantalla y controlar la velocidad del bucle
-            game.run()
-            pygame.display.flip()
-            clock.tick(60)
+        # Ejecutar la acción en el juego
+        _, _, done = game.step(action)
+        
+        # Actualizar la pantalla y controlar la velocidad del bucle
+        game.screen.fill((30, 30, 30))
+        game.run()
+        pygame.display.flip()
+        clock.tick(60)
+    
+    game.reset()  # Reiniciar el juego para la ejecución automática
 
     # Finalizar Pygame
     pygame.quit()

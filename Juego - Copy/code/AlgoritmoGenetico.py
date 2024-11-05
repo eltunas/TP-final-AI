@@ -1,5 +1,8 @@
 import numpy as np
 import tensorflow as tf
+import pygame
+import sys
+import random
 
 class GeneticAlgorithm:
     def __init__(self, population_size, mutation_rate, num_generations, input_size, output_size, game):
@@ -37,14 +40,34 @@ class GeneticAlgorithm:
 
         total_score = 0
         self.game.reset()  # Reinicia el juego
+        clock = pygame.time.Clock()
         done = False
+
+        ALIENLASER = pygame.USEREVENT + 1
+        pygame.time.set_timer(ALIENLASER, 100)
         
         while not done:
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == ALIENLASER:
+                    self.game.alien_shoot()
+
             game_state = self.game.get_game_state()
             input_data = self.preprocess_game_state(game_state).reshape(1, -1)
             action = np.argmax(model.predict(input_data))
+            print(action)
             _, reward, done = self.game.step(action)
             total_score += reward
+
+            # Actualizar la pantalla y controlar la velocidad del bucle
+            self.game.screen.fill((30, 30, 30))
+            self.game.run()
+            pygame.display.flip()
+            clock.tick(120)
+        
 
         return total_score
 
@@ -87,7 +110,7 @@ class GeneticAlgorithm:
         """Crea una nueva generación usando los mejores individuos y aplicando cruce y mutación."""
         new_population = []
         while len(new_population) < self.population_size:
-            parent1, parent2 = np.random.choice(best_individuals, 2, replace=False)
+            parent1, parent2 = random.sample(best_individuals, 2)
             child = self.crossover(parent1, parent2)
             child = self.mutate(child)
             new_population.append(child)
@@ -96,6 +119,7 @@ class GeneticAlgorithm:
     def evolve(self):
         """Ejecuta el ciclo de evolución a través de varias generaciones."""
         for generation in range(self.num_generations):
+            print(f"Generación: {generation}")
             # Evaluar la aptitud de cada individuo
             fitness_scores = [self.evaluate_fitness(weights) for weights in self.population]
 
