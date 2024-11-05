@@ -3,6 +3,7 @@ import tensorflow as tf
 import pygame
 import sys
 import random
+from multiprocessing import Pool
 
 class GeneticAlgorithm:
     def __init__(self, population_size, mutation_rate, num_generations, input_size, output_size, game):
@@ -32,22 +33,31 @@ class GeneticAlgorithm:
             population.append(weights)
         return population
 
-    def evaluate_fitness(self, weights):
+    def evaluate_fitness(self, weights, instance_id, offset_step=30):
         """Evalúa la aptitud de una red neuronal ejecutándola en el juego."""
+        # Construir y configurar el modelo con los pesos dados
         model = self.build_model()
         for layer, weight in zip(model.layers, weights):
             layer.set_weights(weight)
 
+        # Configurar la instancia del juego y la posición de la ventana escalonada
+        self.game = self.game_class(800, 600)  # Instancia de la clase Game con tamaño 800x600
+        pygame.display.set_caption(f'Game Instance {instance_id}')
+        pos_x = instance_id * offset_step  # Desplazar cada ventana en el eje X
+        pos_y = instance_id * offset_step  # Desplazar cada ventana en el eje Y
+        os.environ['SDL_VIDEO_WINDOW_POS'] = f"{pos_x},{pos_y}"  # Posicionar la ventana
+        pygame.display.set_mode((800, 600))  # Configura el tamaño de la ventana
+
+        # Configuración del temporizador para disparos de aliens
+        ALIENLASER = pygame.USEREVENT + 1
+        pygame.time.set_timer(ALIENLASER, 100)
+
         total_score = 0
-        self.game.reset()  # Reinicia el juego
+        self.game.reset()  # Reiniciar el juego
         clock = pygame.time.Clock()
         done = False
 
-        ALIENLASER = pygame.USEREVENT + 1
-        pygame.time.set_timer(ALIENLASER, 100)
-        
         while not done:
-
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
@@ -55,19 +65,18 @@ class GeneticAlgorithm:
                 if event.type == ALIENLASER:
                     self.game.alien_shoot()
 
+            # Obtener el estado actual del juego y predecir la acción
             game_state = self.game.get_game_state()
             input_data = self.preprocess_game_state(game_state).reshape(1, -1)
             action = np.argmax(model.predict(input_data))
-            print(action)
             _, reward, done = self.game.step(action)
             total_score += reward
 
-            # Actualizar la pantalla y controlar la velocidad del bucle
-            self.game.screen.fill((30, 30, 30))
-            self.game.run()
-            pygame.display.flip()
-            clock.tick(120)
-        
+            # Actualizar la pantalla y rellenar el fondo
+            self.game.screen.fill((30, 30, 30))  # Rellena el fondo con color gris oscuro
+            self.game.run()  # Ejecuta la lógica de actualización de la pantalla
+            pygame.display.flip()  # Actualiza la ventana
+            clock.tick(120)  # Controla la velocidad del bucle
 
         return total_score
 
@@ -119,21 +128,20 @@ class GeneticAlgorithm:
     def evolve(self):
         """Ejecuta el ciclo de evolución a través de varias generaciones."""
         for generation in range(self.num_generations):
-            print(f"Generación: {generation}")
-            # Evaluar la aptitud de cada individuo
-            fitness_scores = [self.evaluate_fitness(weights) for weights in self.population]
+            # Ejecutar evaluación en paralelo para todos los individuos de la generación
+            with Pool(processes=self.population_size) as pool:
+                # Asigna una posición escalonada para cada individuo
+                args = [(self.population[i], i) for i in range(self.population_size)]
+                fitness_scores = pool.starmap(self.evaluate_fitness, args)
 
-            # Seleccionar los mejores individuos
-            best_individuals = self.select_best_individuals(fitness_scores)
-
-            # Crear una nueva generación
-            self.population = self.create_new_generation(best_individuals)
+                # Crear la siguiente generación usando los puntajes de aptitud
+                self.create_new_generation(fitness_scores)
 
             # Imprimir el mejor puntaje de la generación actual
             print(f"Generación {generation}: Mejor puntaje = {max(fitness_scores)}")
 
-        # Al final del ciclo evolutivo, guarda el mejor modelo
-        best_weights = best_individuals[0]
+        # Devuelve los pesos del mejor modelo entrenado
+        best_weights = self.select_best_individuals(fitness_scores, num_best=1)[0]
         final_model = self.build_model()
         for layer, weight in zip(final_model.layers, best_weights):
             layer.set_weights(weight)
