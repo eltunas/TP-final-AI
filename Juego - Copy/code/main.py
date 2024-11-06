@@ -311,7 +311,7 @@ class Game:
         return game_state
 
 # Parámetros del algoritmo genético
-population_size = 2
+population_size = 10
 mutation_rate = 0.1
 num_generations = 10
 input_size = 11  # Tamaño del vector de estado

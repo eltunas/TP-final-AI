@@ -36,6 +36,7 @@ class GeneticAlgorithm:
 
     def evaluate_fitness(self, weights, instance_id, offset_step=30):
         """Evalúa la aptitud de una red neuronal ejecutándola en el juego."""
+        print('Agente jugando: ', instance_id)
         # Construir y configurar el modelo con los pesos dados
         model = self.build_model()
         for layer, weight in zip(model.layers, weights):
@@ -62,6 +63,7 @@ class GeneticAlgorithm:
             game_state = self.game.get_game_state()
             input_data = self.preprocess_game_state(game_state).reshape(1, -1)
             action = np.argmax(model.predict(input_data))
+            print(f'El agente {instance_id} jugo la accion {action}')
             _, reward, done = self.game.step(action)
             total_score += reward
 
@@ -127,8 +129,11 @@ class GeneticAlgorithm:
                 args = [(self.population[i], i) for i in range(self.population_size)]
                 fitness_scores = list(executor.map(lambda arg: self.evaluate_fitness(*arg), args))
 
-            # Crear la siguiente generación usando los puntajes de aptitud
-            self.create_new_generation(fitness_scores)
+            # Selecciona los mejores individuos en lugar de los puntajes de aptitud
+            best_individuals = self.select_best_individuals(fitness_scores, num_best=5)
+
+            # Crear la siguiente generación usando los mejores individuos
+            self.population = self.create_new_generation(best_individuals)
 
             # Imprimir el mejor puntaje de la generación actual
             print(f"Generación {generation}: Mejor puntaje = {max(fitness_scores)}")
