@@ -9,7 +9,7 @@ from AlgoritmoGenetico import GeneticAlgorithm
 import numpy as np
 import tensorflow as tf
 
-os.chdir(os.path.dirname(__file__))
+#os.chdir(os.path.dirname(__file__))
 
 class Game:
     def __init__(self, screen_width, screen_height):
@@ -49,15 +49,6 @@ class Game:
         # Extra setup
         self.extra = pygame.sprite.GroupSingle()
         self.extra_spawn_time = randint(40, 80)
-
-        # Audio
-        music = pygame.mixer.Sound('../audio/music.wav')
-        music.set_volume(0.2)
-        music.play(loops=-1)
-        self.laser_sound = pygame.mixer.Sound('../audio/laser.wav')
-        self.laser_sound.set_volume(0.5)
-        self.explosion_sound = pygame.mixer.Sound('../audio/explosion.wav')
-        self.explosion_sound.set_volume(0.3)
 
         #For rewards
         self.last_score = 0
@@ -111,7 +102,6 @@ class Game:
             random_alien = choice(self.aliens.sprites())
             laser_sprite = Laser(random_alien.rect.center, 6, self.screen_height)
             self.alien_lasers.add(laser_sprite)
-            self.laser_sound.play()
 
     def extra_alien_timer(self):
         self.extra_spawn_time -= 1
@@ -130,7 +120,6 @@ class Game:
                     for alien in aliens_hit:
                         self.score += alien.value
                     laser.kill()
-                    self.explosion_sound.play()
 
                 if pygame.sprite.spritecollide(laser, self.extra, True):
                     self.score += 500
@@ -201,7 +190,6 @@ class Game:
             self.player.sprite.shoot_laser()
             self.player.sprite.ready = False
             self.player.sprite.laser_time = pygame.time.get_ticks()
-            self.player.sprite.laser_sound.play()
 
         self.run()
 

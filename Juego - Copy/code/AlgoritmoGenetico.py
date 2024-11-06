@@ -4,6 +4,7 @@ import pygame
 import sys
 import random
 from multiprocessing import Pool
+from concurrent.futures import ThreadPoolExecutor
 
 class GeneticAlgorithm:
     def __init__(self, population_size, mutation_rate, num_generations, input_size, output_size, game):
@@ -39,14 +40,6 @@ class GeneticAlgorithm:
         model = self.build_model()
         for layer, weight in zip(model.layers, weights):
             layer.set_weights(weight)
-
-        # Configurar la instancia del juego y la posición de la ventana escalonada
-        self.game = self.game_class(800, 600)  # Instancia de la clase Game con tamaño 800x600
-        pygame.display.set_caption(f'Game Instance {instance_id}')
-        pos_x = instance_id * offset_step  # Desplazar cada ventana en el eje X
-        pos_y = instance_id * offset_step  # Desplazar cada ventana en el eje Y
-        os.environ['SDL_VIDEO_WINDOW_POS'] = f"{pos_x},{pos_y}"  # Posicionar la ventana
-        pygame.display.set_mode((800, 600))  # Configura el tamaño de la ventana
 
         # Configuración del temporizador para disparos de aliens
         ALIENLASER = pygame.USEREVENT + 1
@@ -129,13 +122,13 @@ class GeneticAlgorithm:
         """Ejecuta el ciclo de evolución a través de varias generaciones."""
         for generation in range(self.num_generations):
             # Ejecutar evaluación en paralelo para todos los individuos de la generación
-            with Pool(processes=self.population_size) as pool:
+            with ThreadPoolExecutor(max_workers=self.population_size) as executor:
                 # Asigna una posición escalonada para cada individuo
                 args = [(self.population[i], i) for i in range(self.population_size)]
-                fitness_scores = pool.starmap(self.evaluate_fitness, args)
+                fitness_scores = list(executor.map(lambda arg: self.evaluate_fitness(*arg), args))
 
-                # Crear la siguiente generación usando los puntajes de aptitud
-                self.create_new_generation(fitness_scores)
+            # Crear la siguiente generación usando los puntajes de aptitud
+            self.create_new_generation(fitness_scores)
 
             # Imprimir el mejor puntaje de la generación actual
             print(f"Generación {generation}: Mejor puntaje = {max(fitness_scores)}")
@@ -147,3 +140,4 @@ class GeneticAlgorithm:
             layer.set_weights(weight)
         
         return final_model  # Devuelve el mejor modelo entrenado
+
