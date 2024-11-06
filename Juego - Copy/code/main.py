@@ -8,18 +8,25 @@ import os
 from AlgoritmoGenetico import GeneticAlgorithm
 import numpy as np
 import tensorflow as tf
+import time
 
 #os.chdir(os.path.dirname(__file__))
 
 class Game:
-    def __init__(self, screen_width, screen_height):
+    def __init__(self, screen_width, screen_height, render=True):
 
-        
-        self.screen_width = screen_width  # Almacenar como atributo
-        self.screen_height = screen_height  # Almacenar como atributo
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.render = render  # Controla si se renderiza la ventana o no
+        self.time_limit = 20  # Límite de tiempo en segundos
+        self.start_time = time.time()  # Guarda el tiempo de inicio
 
-        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-        pygame.display.set_caption('Space Invaders')
+        # Inicializar la pantalla solo si render está habilitado
+        if self.render:
+            self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+            pygame.display.set_caption('Space Invaders')
+        else:
+            self.screen = None  # No se inicializa la pantalla si no se renderiz
 
         # Player setup
         player_sprite = Player((self.screen_width / 2, self.screen_height), self.screen_width, 5)
@@ -54,6 +61,46 @@ class Game:
         self.last_score = 0
         self.last_lives = 3
         self.initial_lives = 3
+
+        # Configuración de temporizador para disparos de aliens
+        self.ALIENLASER_EVENT = pygame.USEREVENT + 1
+        pygame.time.set_timer(self.ALIENLASER_EVENT, 600)  # Cada 600 ms
+
+    def run(self):
+        if self.render:
+            self.screen.fill((0, 0, 0))
+
+        # Actualizar lógica del juego
+        self.player.update()
+        self.alien_lasers.update()
+        self.extra.update()
+        self.aliens.update(self.alien_direction)
+        self.alien_position_checker()
+        self.extra_alien_timer()
+        self.collision_checks()
+
+        # Manejar el evento de disparo de aliens
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == self.ALIENLASER_EVENT:
+                self.alien_shoot()  # Disparar un láser desde un alien al azar
+
+        # Renderizar gráficos solo si render es True
+        if self.render:
+            self.player.sprite.lasers.draw(self.screen)
+            self.player.draw(self.screen)
+            self.blocks.draw(self.screen)
+            self.aliens.draw(self.screen)
+            self.alien_lasers.draw(self.screen)
+            self.extra.draw(self.screen)
+            self.display_lives()
+            self.display_score()
+            self.victory_message()
+            pygame.display.flip()
+
+
     
     def create_obstacle(self, x_start, y_start, offset_x):
         for row_index, row in enumerate(self.shape):
@@ -159,26 +206,26 @@ class Game:
             victory_rect = victory_surf.get_rect(center=(self.screen_width / 2, self.screen_height / 2))
             self.screen.blit(victory_surf, victory_rect)
 
-    def run(self):
-        self.screen.fill((0, 0, 0))
-        
-        self.player.update()
-        self.alien_lasers.update()
-        self.extra.update()
-        self.aliens.update(self.alien_direction)
-        self.alien_position_checker()
-        self.extra_alien_timer()
-        self.collision_checks()
+    #def run(self):
+    #    self.screen.fill((0, 0, 0))
+    ##    
+    #    self.player.update()
+    ##    self.alien_lasers.update()
+    #    self.extra.update()
+    #    self.aliens.update(self.alien_direction)
+    #    self.alien_position_checker()
+    #    self.extra_alien_timer()
+    #    self.collision_checks()
 
-        self.player.sprite.lasers.draw(self.screen)
-        self.player.draw(self.screen)
-        self.blocks.draw(self.screen)
-        self.aliens.draw(self.screen)
-        self.alien_lasers.draw(self.screen)
-        self.extra.draw(self.screen)
-        self.display_lives()
-        self.display_score()
-        self.victory_message()
+    #    self.player.sprite.lasers.draw(self.screen)
+    #    self.player.draw(self.screen)
+    #    self.blocks.draw(self.screen)
+    #    self.aliens.draw(self.screen)
+    #    self.alien_lasers.draw(self.screen)
+    #    self.extra.draw(self.screen)
+    #    self.display_lives()
+    #    self.display_score()
+    #    self.victory_message()
 
     def step(self, action):
         # Ejecutar la acción
@@ -198,7 +245,14 @@ class Game:
         state = self.get_game_state()
 
         # Calcular recompensa utilizando el diccionario
-        reward = self.calculate_reward(state, done)
+        reward = self.calculate_reward(state, done,action)
+
+        # Verificar si el tiempo límite ha sido alcanzado
+        current_time = time.time()
+        elapsed_time = current_time - self.start_time
+        if elapsed_time >= self.time_limit:
+            print("Tiempo límite alcanzado: Fin de la partida.")
+            done = True  # Indica que el juego ha terminado
         
         # Devolver el nuevo estado, recompensa, indicador de fin
         return state, reward, done
@@ -213,8 +267,14 @@ class Game:
 
         return state_image  # Devolver solo la imagen como un arreglo de numpy
 
-    def calculate_reward(self, state, done):
+    def calculate_reward(self, state, done, action):
         reward = 0
+
+        #if(action==0):
+            #reward -= 10
+        
+        if(action==3):
+            reward += 1
 
         # Recompensa por destruir un enemigo (basado en incremento de puntaje)
         current_score = self.score
@@ -223,11 +283,8 @@ class Game:
             self.last_score = current_score
 
         if self.lives < self.last_lives:
-            reward -= 1  # Ajusta la penalización si se pierde una vida
+            reward -= 200  # Ajusta la penalización si se pierde una vida
             self.last_lives = self.lives
-
-        if done:
-            reward -= 5  # Penalización adicional si se pierde el juego
 
         return reward
     
@@ -311,9 +368,9 @@ class Game:
         return game_state
 
 # Parámetros del algoritmo genético
-population_size = 10
-mutation_rate = 0.1
-num_generations = 10
+population_size = 4
+mutation_rate = 0.01
+num_generations = 30
 input_size = 11  # Tamaño del vector de estado
 output_size = 4  # Cuatro acciones posibles: izquierda, derecha, disparar, nada
 
