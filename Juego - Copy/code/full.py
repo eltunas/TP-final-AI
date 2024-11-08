@@ -63,7 +63,7 @@ class PlayerGame:
         pygame.time.set_timer(self.ALIENLASER_EVENT, 600)  # Cada 600 ms
 
         # Límite de tiempo para cada jugador
-        self.time_limit = 30  # Límite de tiempo en segundos
+        self.time_limit = 45  # Límite de tiempo en segundos
         self.start_time = time.time()  # Guarda el tiempo de inicio
 
     def run(self):
@@ -446,7 +446,7 @@ class GeneticAlgorithm:
 def main():
     screen_width = 800
     screen_height = 600
-    num_players = 20
+    num_players = 12
     population_size = num_players
     mutation_rate = 0.1
     crossover_rate = 0.7
@@ -467,6 +467,7 @@ def main():
             action = genetic_algorithm.get_action(genetic_algorithm.models[player_id], state)
             print(action)
             state, reward, done = player.step(action)
+            print(state)
             total_reward += reward
             if reward > 0:
                 logging.info(f'Player {player_id} received reward. Total reward: {total_reward}')
@@ -474,7 +475,7 @@ def main():
         player.reset()
         return total_reward
     
-    for generation in range(10):
+    for generation in range(30):
         logging.info(f'Starting generation {generation + 1}')
         fitness_scores = []
 
