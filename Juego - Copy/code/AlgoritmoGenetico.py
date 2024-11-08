@@ -4,16 +4,18 @@ import pygame
 import sys
 import random
 from multiprocessing import Pool
-from concurrent.futures import ThreadPoolExecutor
+from main import Game
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+
 
 class GeneticAlgorithm:
-    def __init__(self, population_size, mutation_rate, num_generations, input_size, output_size, game):
+    def __init__(self, population_size, mutation_rate, num_generations, input_size, output_size):
         self.population_size = population_size
         self.mutation_rate = mutation_rate
         self.num_generations = num_generations
         self.input_size = input_size
         self.output_size = output_size
-        self.game = game  # La instancia del juego para evaluar cada red
         self.population = self.initialize_population()
 
     def build_model(self):
@@ -29,46 +31,91 @@ class GeneticAlgorithm:
         """Inicializa una población de redes con pesos aleatorios."""
         population = []
         for _ in range(self.population_size):
-            model = self.build_model()
-            weights = [layer.get_weights() for layer in model.layers]
-            population.append(weights)
+            model = self.build_model()  # Crea el modelo con pesos aleatorios
+            population.append(model)    # Guarda el modelo completo
         return population
 
-    def evaluate_fitness(self, weights, instance_id, render=True):
+    def evaluate_fitness(self,  model, generation,  game, instance_id):
         """Evalúa la aptitud de una red neuronal ejecutándola en el juego."""
-        from main import Game
-        game_instance = Game(800, 600, render=render)  # Cada agente tiene su propia instancia de `Game`
 
         print(f'Agente {instance_id} Iniciado')
         
-        # Configura el modelo con los pesos dados
-        model = self.build_model()
-        for layer, weight in zip(model.layers, weights):
-            layer.set_weights(weight)
-
         total_score = 0
-        game_instance.reset()
+        game.reset()  # Reinicia el juego
         clock = pygame.time.Clock()
         done = False
 
+        shoot = False
+        if generation > 10:
+            shoot = True
+        shoot_speed= 800
+        if generation > 30:
+            shoot_speed = 500
+
+        start_time = time.time()  # Iniciar el temporizador
+
+        if generation > 10:
+            time_limit = 300
+        elif generation > 5:
+            time_limit = 120
+        elif generation > 2:
+            time_limit = 60
+        else:
+            time_limit = 30
+        
+
+        pygame.font.init()
+        font = pygame.font.Font(None, 36)  # Fuente predeterminada, tamaño 36
+
+        ALIENLASER = pygame.USEREVENT + 1
+        pygame.time.set_timer(ALIENLASER, 600)
+
         while not done:
-            # Lógica del juego y predicción de acción
-            game_state = game_instance.get_game_state()
+            elapsed_time = int(time.time() - start_time)
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                if event.type == ALIENLASER and shoot == True:
+                    game.alien_shoot()
+
+            game_state = game.get_game_state()
             input_data = self.preprocess_game_state(game_state).reshape(1, -1)
-            action = np.argmax(model.predict(input_data))
-            
-            _, reward, done = game_instance.step(action)
+
+            epsilon = 0.1  # Probabilidad de explorar aleatoriamente
+
+            # Obtener las probabilidades de las acciones
+            action_probs = model.predict(input_data, verbose=0)[0]
+
+            # Decidir si explorar o explotar
+            if np.random.rand() < epsilon:
+                # Exploración: elegir una acción aleatoria
+                action = np.random.choice(len(action_probs))
+            else:
+                # Explotación: elegir la acción con la mayor probabilidad
+                action = np.argmax(action_probs) 
+
+            _, reward, done = game.step(action, start_time)
             total_score += reward
 
-            if(reward != 0):
-                print(f'Agente {instance_id} Jugo {action} y consiguio una recompensa de {reward}')
-            if(action ==3):
-                print(f'Agente {instance_id} disparo')
-            
-            game_instance.run()  # Solo ejecuta `run` si render está activado
+            game.screen.fill((30, 30, 30))
+            game.run()
 
-            clock.tick(120)  # Controla la velocidad del bucle
+            timer_text = font.render(f"Tiempo: {elapsed_time}s", True, (255, 255, 255))
+            text_rect = timer_text.get_rect(center=(game.screen.get_width() // 2, 20))
+            game.screen.blit(timer_text, text_rect)
 
+            pygame.display.flip()
+            clock.tick(120)
+
+            if elapsed_time > time_limit:
+                print("Time Finished")
+                done = True
+                total_score -= 1000
+
+        print(total_score)
         return total_score
 
     def preprocess_game_state(self, game_state):
@@ -92,19 +139,32 @@ class GeneticAlgorithm:
 
     def crossover(self, parent1, parent2):
         """Realiza cruce entre dos individuos para producir un nuevo conjunto de pesos."""
-        child = []
-        for p1_layer, p2_layer in zip(parent1, parent2):
-            new_weights = [(p1 + p2) / 2 for p1, p2 in zip(p1_layer, p2_layer)]
-            child.append(new_weights)
-        return child
+        child_model = self.build_model()  # Crear un nuevo modelo vacío
+        for layer1, layer2, child_layer in zip(parent1.layers, parent2.layers, child_model.layers):
+            # Promediar los pesos entre los padres
+            weights1, biases1 = layer1.get_weights()
+            weights2, biases2 = layer2.get_weights()
 
-    def mutate(self, weights):
-        """Aplica mutación aleatoria a un conjunto de pesos."""
-        for layer in weights:
-            for i in range(len(layer)):
-                if np.random.rand() < self.mutation_rate:
-                    layer[i] += np.random.normal()
-        return weights
+            new_weights = (weights1 + weights2) / 2
+            new_biases = (biases1 + biases2) / 2
+            child_layer.set_weights([new_weights, new_biases])
+
+        return child_model
+
+    def mutate(self, model):
+        """Aplica mutación aleatoria a un modelo."""
+        for layer in model.layers:
+            weights, biases = layer.get_weights()
+
+            # Mutación en los pesos
+            if np.random.rand() < self.mutation_rate:
+                weights += np.random.normal(scale=0.1, size=weights.shape)
+            if np.random.rand() < self.mutation_rate:
+                biases += np.random.normal(scale=0.1, size=biases.shape)
+
+            layer.set_weights([weights, biases])
+
+        return model
 
     def create_new_generation(self, best_individuals):
         """Crea una nueva generación usando los mejores individuos y aplicando cruce y mutación."""
@@ -121,31 +181,33 @@ class GeneticAlgorithm:
         for generation in range(self.num_generations):
             print(f'Inciando generacion {generation}')
 
+            game_instances = [Game(800, 600) for _ in range(self.population_size)]
+
             fitness_scores = []
-
-            # Evaluar el primer agente con renderizado activado
-            #fitness_score = self.evaluate_fitness(self.population[0], instance_id=0, render=True)
-            #fitness_scores.append(fitness_score)
-
-            # Evaluar el resto de los agentes sin renderizado
+    
+                # Crea un ThreadPoolExecutor con tantos hilos como tamaño de la población
             with ThreadPoolExecutor(max_workers=self.population_size) as executor:
-                args = [(self.population[i], i, False) for i in range(0, self.population_size)]
-                other_fitness_scores = list(executor.map(lambda arg: self.evaluate_fitness(*arg), args))
-                fitness_scores.extend(other_fitness_scores)
+                # Define una lista de tareas para cada modelo en la población, asociada a su instancia de juego
+                futures = [
+                    executor.submit(self.evaluate_fitness, model, generation, game_instances[i], i)
+                    for i, model in enumerate(self.population)
+                ]
+                
+                # Recolecta los resultados a medida que se completan las tareas
+                for future in as_completed(futures):
+                    fitness_scores.append(future.result())
 
-            print(f'Socres de la generacion {generation}: {fitness_scores}')
+            print(f'Scores de la generación {generation}: {fitness_scores}')
             # Seleccionar los mejores individuos y generar la nueva población
-            best_individuals = self.select_best_individuals(fitness_scores, num_best=5)
-            self.population = self.create_new_generation(best_individuals)
+            best_individuals = self.select_best_individuals(fitness_scores)
 
+            self.population = self.create_new_generation(best_individuals)
             print(f"Generación {generation}: Mejor puntaje = {max(fitness_scores)}")
 
         # Obtener el mejor modelo entrenado
-        best_weights = self.select_best_individuals(fitness_scores, num_best=1)[0]
-        final_model = self.build_model()
-        for layer, weight in zip(final_model.layers, best_weights):
-            layer.set_weights(weight)
-
-        return final_model
+        # Al final del ciclo evolutivo, guarda el mejor modelo
+        best_model = best_individuals[0]
+        
+        return best_model  # Devuelve el mejor modelo entrenado
 
 

@@ -5,12 +5,11 @@ from alien import Alien, Extra
 from random import choice, randint
 from laser import Laser
 import os
-from AlgoritmoGenetico import GeneticAlgorithm
 import numpy as np
 import tensorflow as tf
 import time
 
-#os.chdir(os.path.dirname(__file__))
+os.chdir(os.path.dirname(__file__))
 
 class Game:
     def __init__(self, screen_width, screen_height, render=True):
@@ -206,28 +205,28 @@ class Game:
             victory_rect = victory_surf.get_rect(center=(self.screen_width / 2, self.screen_height / 2))
             self.screen.blit(victory_surf, victory_rect)
 
-    #def run(self):
-    #    self.screen.fill((0, 0, 0))
-    ##    
-    #    self.player.update()
-    ##    self.alien_lasers.update()
-    #    self.extra.update()
-    #    self.aliens.update(self.alien_direction)
-    #    self.alien_position_checker()
-    #    self.extra_alien_timer()
-    #    self.collision_checks()
+    def run(self):
+        self.screen.fill((0, 0, 0))
+        
+        self.player.update()
+        self.alien_lasers.update()
+        self.extra.update()
+        self.aliens.update(self.alien_direction)
+        self.alien_position_checker()
+        self.extra_alien_timer()
+        self.collision_checks()
 
-    #    self.player.sprite.lasers.draw(self.screen)
-    #    self.player.draw(self.screen)
-    #    self.blocks.draw(self.screen)
-    #    self.aliens.draw(self.screen)
-    #    self.alien_lasers.draw(self.screen)
-    #    self.extra.draw(self.screen)
-    #    self.display_lives()
-    #    self.display_score()
-    #    self.victory_message()
+        self.player.sprite.lasers.draw(self.screen)
+        self.player.draw(self.screen)
+        self.blocks.draw(self.screen)
+        self.aliens.draw(self.screen)
+        self.alien_lasers.draw(self.screen)
+        self.extra.draw(self.screen)
+        self.display_lives()
+        self.display_score()
+        self.victory_message()
 
-    def step(self, action):
+    def step(self, action, start_time):
         # Ejecutar la acción
         if action == 1:
             self.player.sprite.move(-1)
@@ -237,6 +236,7 @@ class Game:
             self.player.sprite.shoot_laser()
             self.player.sprite.ready = False
             self.player.sprite.laser_time = pygame.time.get_ticks()
+            #self.player.sprite.laser_sound.play()
 
         self.run()
 
@@ -245,46 +245,29 @@ class Game:
         state = self.get_game_state()
 
         # Calcular recompensa utilizando el diccionario
-        reward = self.calculate_reward(state, done,action)
-
-        # Verificar si el tiempo límite ha sido alcanzado
-        current_time = time.time()
-        elapsed_time = current_time - self.start_time
-        if elapsed_time >= self.time_limit:
-            print("Tiempo límite alcanzado: Fin de la partida.")
-            done = True  # Indica que el juego ha terminado
+        reward = self.calculate_reward(state, done, start_time)
         
         # Devolver el nuevo estado, recompensa, indicador de fin
         return state, reward, done
     
-    def get_state_image(self):
-        # Obtener la imagen de estado actual del juego
-        self.render_game()  # Dibuja todos los sprites en la pantalla
 
-        # Capturar la superficie del juego
-        state_image = pygame.surfarray.array3d(self.screen)  # Obtener el arreglo de la superficie
-        state_image = np.transpose(state_image, (1, 0, 2))  # Cambiar la forma a (alto, ancho, canales)
-
-        return state_image  # Devolver solo la imagen como un arreglo de numpy
-
-    def calculate_reward(self, state, done, action):
+    def calculate_reward(self, state, done, start_time):
         reward = 0
-
-        #if(action==0):
-            #reward -= 10
-        
-        if(action==3):
-            reward += 1
 
         # Recompensa por destruir un enemigo (basado en incremento de puntaje)
         current_score = self.score
         if current_score > self.last_score:
-            reward += (current_score - self.last_score)  # Ajusta el multiplicador según sea necesario
+            reward += (current_score - self.last_score) 
             self.last_score = current_score
 
         if self.lives < self.last_lives:
-            reward -= 200  # Ajusta la penalización si se pierde una vida
+            reward -= 1000  
             self.last_lives = self.lives
+
+        if done and self.lives == 0:
+            reward -= 500  # Penalización adicional si se pierde el juego
+        elif done:
+            reward += 2000 - (time.time() - start_time)
 
         return reward
     
@@ -373,6 +356,8 @@ mutation_rate = 0.01
 num_generations = 30
 input_size = 11  # Tamaño del vector de estado
 output_size = 4  # Cuatro acciones posibles: izquierda, derecha, disparar, nada
+
+os.environ["SDL_VIDEODRIVER"] = "dummy"  # Configurar el driver de video en "dummy"
 
 def main():
     # Configuración de Pygame
