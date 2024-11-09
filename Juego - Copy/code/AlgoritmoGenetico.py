@@ -17,6 +17,8 @@ class GeneticAlgorithm:
         self.input_size = input_size
         self.output_size = output_size
         self.population = self.initialize_population()
+        self.level = 1
+        self.win_count = 0
 
     def build_model(self):
         """Construye un modelo de red neuronal."""
@@ -38,19 +40,47 @@ class GeneticAlgorithm:
     def evaluate_fitness(self,  model, generation,  game, instance_id):
         """Evalúa la aptitud de una red neuronal ejecutándola en el juego."""
 
-        print(f'Agente {instance_id} Iniciado')
+        print(f'Agente {instance_id} Iniciado. Level: {self.level}')
         
         total_score = 0
         game.reset()  # Reinicia el juego
         clock = pygame.time.Clock()
         done = False
 
-        shoot = False
-        if generation > 5:
+        if self.level == 1:
+            shoot = False
+            shoot_speed = 0
+            time_limit= 60
+
+            if generation > 15:
+                time_limit = 120
+
+            elif generation > 10:
+                time_limit = 90
+        
+        elif self.level == 2:
             shoot = True
-        shoot_speed= 800
-        if generation > 10:
-            shoot_speed = 500
+            shoot_speed = 600
+            time_limit = 120
+
+        elif self.level == 3:
+            shoot = True
+            shoot_speed = 300
+            time_limit = 180
+
+        """
+        if generation > 0:
+            shoot = True
+        else:
+            shoot = False
+        
+        if generation > 15:
+            shoot_speed = 200
+        elif generation > 10:
+            shoot_speed = 400
+        else:
+            shoot_speed= 600
+
 
         start_time = time.time()  # Iniciar el temporizador
 
@@ -62,13 +92,15 @@ class GeneticAlgorithm:
             time_limit = 60
         else:
             time_limit = 30
-        
+        """
+
+        start_time = time.time()  # Iniciar el temporizador
 
         pygame.font.init()
         font = pygame.font.Font(None, 36)  # Fuente predeterminada, tamaño 36
 
         ALIENLASER = pygame.USEREVENT + 1
-        pygame.time.set_timer(ALIENLASER, 600)
+        pygame.time.set_timer(ALIENLASER, shoot_speed)
 
         while not done:
             elapsed_time = int(time.time() - start_time)
@@ -88,6 +120,7 @@ class GeneticAlgorithm:
 
             # Obtener las probabilidades de las acciones
             action_probs = model.predict(input_data, verbose=0)[0]
+            print(action_probs)
 
             # Decidir si explorar o explotar
             if np.random.rand() < epsilon:
@@ -114,6 +147,14 @@ class GeneticAlgorithm:
                 print("Time Finished")
                 done = True
                 total_score -= 1000
+            
+            if not game.aliens.sprites():
+                print("Ganaste")
+                self.win_count += 1
+                if self.win_count >= 5 and self.level != 3:
+                    self.level += 1
+                    self.win_count = 0
+                done = True
 
         print(total_score)
         return total_score

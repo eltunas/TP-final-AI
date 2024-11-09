@@ -1,6 +1,7 @@
 import tensorflow as tf
 from main import Game  # Asegúrate de importar la clase Game correctamente
 import pygame
+import sys
 
 # Cargar el modelo entrenado
 
@@ -28,9 +29,19 @@ def play_game(model, game):
     start_time = time.time()  # Para limitar el tiempo de juego si es necesario
     time_limit = 60  # Puedes ajustar este valor según el tiempo que desees que dure la simulación
 
+    ALIENLASER = pygame.USEREVENT + 1
+    pygame.time.set_timer(ALIENLASER, 800)
+
     while not done:
         # Calcular el tiempo transcurrido
         elapsed_time = int(time.time() - start_time)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == ALIENLASER:
+                game.alien_shoot()
 
         # Obtener el estado del juego
         game_state = game.get_game_state()  # Asegúrate de que este método existe y devuelve el estado correcto

@@ -61,44 +61,6 @@ class Game:
         self.last_lives = 3
         self.initial_lives = 3
 
-        # Configuración de temporizador para disparos de aliens
-        self.ALIENLASER_EVENT = pygame.USEREVENT + 1
-        pygame.time.set_timer(self.ALIENLASER_EVENT, 600)  # Cada 600 ms
-
-    def run(self):
-        if self.render:
-            self.screen.fill((0, 0, 0))
-
-        # Actualizar lógica del juego
-        self.player.update()
-        self.alien_lasers.update()
-        self.extra.update()
-        self.aliens.update(self.alien_direction)
-        self.alien_position_checker()
-        self.extra_alien_timer()
-        self.collision_checks()
-
-        # Manejar el evento de disparo de aliens
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            elif event.type == self.ALIENLASER_EVENT:
-                self.alien_shoot()  # Disparar un láser desde un alien al azar
-
-        # Renderizar gráficos solo si render es True
-        if self.render:
-            self.player.sprite.lasers.draw(self.screen)
-            self.player.draw(self.screen)
-            self.blocks.draw(self.screen)
-            self.aliens.draw(self.screen)
-            self.alien_lasers.draw(self.screen)
-            self.extra.draw(self.screen)
-            self.display_lives()
-            self.display_score()
-            self.victory_message()
-            pygame.display.flip()
-
 
     
     def create_obstacle(self, x_start, y_start, offset_x):
@@ -187,6 +149,7 @@ class Game:
                 pygame.sprite.spritecollide(alien, self.blocks, True)
 
                 if pygame.sprite.spritecollide(alien, self.player, False):
+                    self.lives = 0
                     done = True
 
     def display_lives(self):
@@ -201,6 +164,7 @@ class Game:
 
     def victory_message(self):
         if not self.aliens.sprites():
+            done = True
             victory_surf = self.font.render('You won', False, 'white')
             victory_rect = victory_surf.get_rect(center=(self.screen_width / 2, self.screen_height / 2))
             self.screen.blit(victory_surf, victory_rect)
@@ -262,14 +226,15 @@ class Game:
 
         if self.lives < self.last_lives:
             reward -= 1000  
+            print (f"-1 Vida. Te quedan {self.lives}")
             self.last_lives = self.lives
 
-        if done and self.lives == 0:
+        if self.lives == 0:
             reward -= 500  # Penalización adicional si se pierde el juego
             print("Muerto")
-        elif done:
+
+        if not self.aliens.sprites():
             reward += 2000 - (time.time() - start_time)
-            print("Ganaste")
 
         return reward
     
@@ -359,7 +324,6 @@ num_generations = 30
 input_size = 11  # Tamaño del vector de estado
 output_size = 4  # Cuatro acciones posibles: izquierda, derecha, disparar, nada
 
-os.environ["SDL_VIDEODRIVER"] = "dummy"  # Configurar el driver de video en "dummy"
 
 def main():
     # Configuración de Pygame
