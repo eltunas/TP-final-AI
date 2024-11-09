@@ -1,10 +1,22 @@
+<<<<<<< Updated upstream
 import tensorflow as tf
+=======
+import keras
+>>>>>>> Stashed changes
 from main import Game  # Asegúrate de importar la clase Game correctamente
 import pygame
 
 # Cargar el modelo entrenado
+<<<<<<< Updated upstream
 loaded_model = tf.keras.models.load_model('best_model.keras')
 
+=======
+loaded_model = keras.saving.load_model('best_model.h5')
+
+loaded_model.compile(optimizer=Adam(), 
+                     loss=SparseCategoricalCrossentropy(from_logits=True), 
+                     metrics=['accuracy'])
+>>>>>>> Stashed changes
 
 # Crear una instancia del juego
 pygame.init()  # Asegúrate de inicializar Pygame
@@ -20,7 +32,10 @@ def play_game(model, game):
     clock = pygame.time.Clock()
     done = False
     epsilon = 0.1  # Probabilidad de exploración (si quieres agregar exploración aleatoria)
+<<<<<<< Updated upstream
     total_score=0
+=======
+>>>>>>> Stashed changes
 
     start_time = time.time()  # Para limitar el tiempo de juego si es necesario
     time_limit = 60  # Puedes ajustar este valor según el tiempo que desees que dure la simulación
@@ -42,11 +57,16 @@ def play_game(model, game):
         else:
             action = np.argmax(action_probs)  # Explotación (acción con mayor probabilidad)
 
+<<<<<<< Updated upstream
         print(action)
 
         # Ejecutar la acción en el juego
         _, reward, done = game.step(action, start_time)
         total_score += reward
+=======
+        # Ejecutar la acción en el juego
+        _, reward, done = game.step(action, start_time)
+>>>>>>> Stashed changes
 
         # Actualizar la pantalla y dibujar el juego
         game.screen.fill((30, 30, 30))  # Fondo oscuro para la pantalla
@@ -63,7 +83,11 @@ def play_game(model, game):
         if elapsed_time > time_limit:  # Finaliza después de cierto tiempo
             done = True
 
+<<<<<<< Updated upstream
     print(f"Juego terminado. Su puntaje fue: {total_score}")
+=======
+    print("Juego terminado")
+>>>>>>> Stashed changes
 
 
 def preprocess_game_state(game_state):
