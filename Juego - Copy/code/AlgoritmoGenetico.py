@@ -119,8 +119,7 @@ class GeneticAlgorithm:
             epsilon = 0.1  # Probabilidad de explorar aleatoriamente
 
             # Obtener las probabilidades de las acciones
-            action_probs = model.predict(input_data, verbose=0)[0]
-            print(action_probs)
+            action_probs = model.predict(input_data, verbose=0)
 
             # Decidir si explorar o explotar
             if np.random.rand() < epsilon:
@@ -133,15 +132,9 @@ class GeneticAlgorithm:
             _, reward, done = game.step(action, start_time)
             total_score += reward
 
-            game.screen.fill((30, 30, 30))
             game.run()
 
-            timer_text = font.render(f"Tiempo: {elapsed_time}s", True, (255, 255, 255))
-            text_rect = timer_text.get_rect(center=(game.screen.get_width() // 2, 20))
-            game.screen.blit(timer_text, text_rect)
-
-            pygame.display.flip()
-            clock.tick(120)
+            clock.tick(60)
 
             if elapsed_time > time_limit:
                 print("Time Finished")
