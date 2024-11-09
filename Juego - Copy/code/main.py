@@ -266,8 +266,10 @@ class Game:
 
         if done and self.lives == 0:
             reward -= 500  # Penalización adicional si se pierde el juego
+            print("Muerto")
         elif done:
             reward += 2000 - (time.time() - start_time)
+            print("Ganaste")
 
         return reward
     

@@ -46,16 +46,16 @@ class GeneticAlgorithm:
         done = False
 
         shoot = False
-        if generation > 10:
+        if generation > 5:
             shoot = True
         shoot_speed= 800
-        if generation > 30:
+        if generation > 10:
             shoot_speed = 500
 
         start_time = time.time()  # Iniciar el temporizador
 
         if generation > 10:
-            time_limit = 300
+            time_limit = 180
         elif generation > 5:
             time_limit = 120
         elif generation > 2:
