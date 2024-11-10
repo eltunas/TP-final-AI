@@ -70,7 +70,7 @@ class PlayerGame:
 
         # Configuración de temporizador para disparos de aliens
         self.ALIENLASER_EVENT = pygame.USEREVENT + 1
-        pygame.time.set_timer(self.ALIENLASER_EVENT, 300)  # Cada 300 ms
+        pygame.time.set_timer(self.ALIENLASER_EVENT, 100)  # Cada 100 ms
 
         # Límite de tiempo para cada jugador
         self.time_limit = 45  # Límite de tiempo en segundos
@@ -86,7 +86,7 @@ class PlayerGame:
             # Comprueba si ha pasado al menos 1 segundo desde la última pérdida de vida
             if current_time - self.last_life_loss_time >= 5:
                 self.lives -= 1
-                logging.info(f'Player {self.player_id} hit the border. Remaining lives: {self.lives}')
+                #logging.info(f'Player {self.player_id} hit the border. Remaining lives: {self.lives}')
                 self.last_life_loss_time = current_time  # Actualiza el tiempo de la última pérdida de vida
 
 
@@ -249,11 +249,12 @@ class PlayerGame:
         current_score = self.score
         if current_score > self.last_score:
             reward += (current_score - self.last_score)  # Ajusta el multiplicador según sea necesario
-            print(reward)
+            #logging.info(f'Player {self.player_id} score points: {current_score}')
             self.last_score = current_score
 
         if self.lives < self.last_lives:
             reward -= 300  # Ajusta la penalización si se pierde una vida
+            #logging.info(f'Player {self.player_id} lost a life')
             self.last_lives = self.lives
 
         # Recompensa por acercarse a un enemigo
@@ -273,7 +274,6 @@ class PlayerGame:
         )
         if not aligned_enemy:
             reward -= 3 # Penalización si no hay enemigos alineados en x
-            logging.info(f'Player {self.player_id} penalized for lack of aligned enemies. Penalty: -1')
 
 
         # Verificar si el jugador está tocando los bordes de la pantalla
@@ -421,7 +421,7 @@ class PlayerGame:
             distance_to_left_edge, distance_to_right_edge,  # Distancia a los bordes izquierdo y derecho
             *alien_data,  # Datos de los 5 alienígenas más cercanos (incluye posición relativa en x)
             *laser_data,  # Datos de los 5 láseres más cercanos (incluye posición relativa en x)
-            #aligned_enemy
+            aligned_enemy
         ]
 
         return game_state
@@ -492,9 +492,6 @@ class GeneticAlgorithm:
         optimizer = Adam(learning_rate=0.001)
 
         model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
-
-        if(True):
-            model.load_weights('./best_model_weights_gen_30.h5')  
 
         return model
 
@@ -592,12 +589,12 @@ def main():
     screen_width = 800
     screen_height = 600
     num_players = 1
-    num_games = 1
-    num_gens = 1
+    num_games = 12
+    num_gens = 50
     population_size = num_games
     mutation_rate = 0.1
     crossover_rate = 0.7
-    input_size = 69
+    input_size = 70
     hidden_size = 16
     output_size = 4
     clock = pygame.time.Clock()
@@ -626,13 +623,13 @@ def main():
         for ig in range(num_games):
             pygame.init()
             game = Game(screen_width, screen_height, num_players, render=True)
-            for ip, player in enumerate(game.players):
-                fitness_scores.append(run_player(genetic_algorithm, player, ig))
-                print(fitness_scores)
-            #with ThreadPoolExecutor() as executor:
-            #    futures = [executor.submit(run_player, genetic_algorithm, player, i) for i, player in enumerate(game.players)]
-            #    for future in as_completed(futures):
-            #        fitness_scores.append(future.result())
+            #for ip, player in enumerate(game.players):
+            #    fitness_scores.append(run_player(genetic_algorithm, player, ig))
+            #    print(fitness_scores)
+            with ThreadPoolExecutor() as executor:
+                futures = [executor.submit(run_player, genetic_algorithm, player, i) for i, player in enumerate(game.players)]
+                for future in as_completed(futures):
+                    fitness_scores.append(future.result())
 
             game.reset()  # Limpiar los recursos del juego después de cada ciclo
             # Finalizar Pygame una sola vez al final
@@ -642,7 +639,7 @@ def main():
         genetic_algorithm.evolve(fitness_scores)
 
    
-
+os.environ["SDL_VIDEODRIVER"] = "dummy"
 if __name__ == "__main__":
     main()
 
