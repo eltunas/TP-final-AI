@@ -281,38 +281,50 @@ class Game:
         self.extra = pygame.sprite.GroupSingle()
         self.extra_spawn_time = randint(40, 80)
 
-    def get_closest(self,sprite_group, position):
-        """Devuelve el sprite más cercano en el grupo y su distancia a la posición dada."""
-        closest_sprite = None
-        min_distance = float('inf')
+    def get_closest_n(self, sprite_group, position, n=5):
+        """Devuelve los n sprites más cercanos en el grupo y sus distancias a la posición dada."""
+        distances = []
         
         for sprite in sprite_group.sprites():
             distance = np.linalg.norm(np.array(sprite.rect.center) - np.array(position))
-            if distance < min_distance:
-                min_distance = distance
-                closest_sprite = sprite
+            distances.append((sprite, distance))
         
-        return closest_sprite, min_distance
+        # Ordena los sprites por distancia y devuelve los n más cercanos
+        closest_sprites = sorted(distances, key=lambda x: x[1])[:n]
+        
+        # Separa los sprites y sus distancias en listas
+        closest_positions = [sprite.rect.center for sprite, _ in closest_sprites]
+        closest_distances = [distance for _, distance in closest_sprites]
+        
+        # Si hay menos de n objetos, rellena con valores por defecto
+        while len(closest_positions) < n:
+            closest_positions.append((0, 0))  # Posición por defecto para los slots vacíos
+            closest_distances.append(float('inf'))  # Distancia infinita o un valor alto
+        
+        return closest_positions, closest_distances
 
     def get_game_state(self):
-        """Obtiene el estado del juego, incluyendo los elementos más cercanos y la posición del jugador."""
+        """Obtiene el estado del juego, incluyendo los 5 elementos más cercanos y la posición del jugador."""
         player_pos = self.player.sprite.rect.center
 
-        # Alien más cercano
-        closest_alien, alien_distance = self.get_closest(self.aliens, player_pos)
+        # Obtener los 5 aliens más cercanos
+        alien_positions, alien_distances = self.get_closest_n(self.aliens, player_pos, n=5)
 
-        # Láser de alien más cercano
-        closest_alien_laser, laser_distance = self.get_closest(self.alien_lasers, player_pos)
+        # Obtener los 5 láseres de alien más cercanos
+        laser_positions, laser_distances = self.get_closest_n(self.alien_lasers, player_pos, n=5)
 
-        # Obstáculo más cercano
-        closest_obstacle, obstacle_distance = self.get_closest(self.blocks, player_pos)
+        # Obtener los 5 obstáculos más cercanos
+        obstacle_positions, obstacle_distances = self.get_closest_n(self.blocks, player_pos, n=5)
 
         # Crear un diccionario con el estado
         game_state = {
             'player_position': player_pos,
-            'closest_alien': (closest_alien.rect.center if closest_alien else None, alien_distance),
-            'closest_alien_laser': (closest_alien_laser.rect.center if closest_alien_laser else None, laser_distance),
-            'closest_obstacle': (closest_obstacle.rect.center if closest_obstacle else None, obstacle_distance)
+            'alien_positions': alien_positions,
+            'alien_distances': alien_distances,
+            'laser_positions': laser_positions,
+            'laser_distances': laser_distances,
+            'obstacle_positions': obstacle_positions,
+            'obstacle_distances': obstacle_distances
         }
 
         return game_state

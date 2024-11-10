@@ -21,11 +21,11 @@ class GeneticAlgorithm:
         self.win_count = 0
 
     def build_model(self):
-        """Construye un modelo de red neuronal."""
-        model = tf.keras.models.Sequential([
-            tf.keras.layers.Dense(64, activation='relu', input_shape=(self.input_size,)),
+        model = tf.keras.Sequential([
+            tf.keras.layers.Flatten(input_shape=self.input_size),
+            tf.keras.layers.Dense(64, activation='relu'),
             tf.keras.layers.Dense(32, activation='relu'),
-            tf.keras.layers.Dense(self.output_size, activation='softmax')
+            tf.keras.layers.Dense(self.output_size, activation='softmax')  # Suponiendo salida de probabilidades de acciones
         ])
         return model
 
@@ -114,26 +114,20 @@ class GeneticAlgorithm:
                     game.alien_shoot()
 
             game_state = game.get_game_state()
-            input_data = self.preprocess_game_state(game_state).reshape(1, -1)
+            input_data = self.preprocess_game_state(game_state).reshape(1,1,-1)
 
-            epsilon = 0.1  # Probabilidad de explorar aleatoriamente
+            epsilon = max(0.01, 1 - generation * 0.01) # Decaimiento de exploración
+            
+            action_probs = model.predict(input_data, verbose=0)[0]
 
-            # Obtener las probabilidades de las acciones
-            action_probs = model.predict(input_data, verbose=0)
-
-            # Decidir si explorar o explotar
-            if np.random.rand() < epsilon:
-                # Exploración: elegir una acción aleatoria
-                action = np.random.choice(len(action_probs))
-            else:
-                # Explotación: elegir la acción con la mayor probabilidad
-                action = np.argmax(action_probs) 
+            action = np.random.choice(len(action_probs)) if np.random.rand() < epsilon else np.argmax(action_probs)
 
             _, reward, done = game.step(action, start_time)
             total_score += reward
 
+            game.screen.fill((30, 30, 30))
             game.run()
-
+            pygame.display.flip()
             clock.tick(60)
 
             if elapsed_time > time_limit:
@@ -152,18 +146,41 @@ class GeneticAlgorithm:
         print(total_score)
         return total_score
 
-    def preprocess_game_state(self, game_state):
-        """Preprocesa el estado del juego para convertirlo en una entrada válida para el modelo."""
+    def preprocess_game_state(self, game_state, expected_count=5):
         player_pos = np.array(game_state['player_position'])
-        alien_pos, alien_distance = game_state['closest_alien']
-        laser_pos, laser_distance = game_state['closest_alien_laser']
-        obstacle_pos, obstacle_distance = game_state['closest_obstacle']
-        
-        alien_pos = np.array(alien_pos) if alien_pos else np.zeros(2)
-        laser_pos = np.array(laser_pos) if laser_pos else np.zeros(2)
-        obstacle_pos = np.array(obstacle_pos) if obstacle_pos else np.zeros(2)
-        
-        input_data = np.concatenate([player_pos, alien_pos, [alien_distance], laser_pos, [laser_distance], obstacle_pos, [obstacle_distance]])
+
+        # Aplanar y rellenar la lista de posiciones y distancias para los aliens
+        alien_positions = [coord for pos in game_state['alien_positions'] for coord in pos]
+        alien_distances = game_state['alien_distances']
+        while len(alien_positions) < expected_count * 2:  # Cada posición tiene 2 valores (x, y)
+            alien_positions.extend([0, 0])  # Relleno para posiciones
+        while len(alien_distances) < expected_count:
+            alien_distances.append(float('inf'))  # Relleno para distancias
+
+        # Aplanar y rellenar la lista de posiciones y distancias para los láseres
+        laser_positions = [coord for pos in game_state['laser_positions'] for coord in pos]
+        laser_distances = game_state['laser_distances']
+        while len(laser_positions) < expected_count * 2:
+            laser_positions.extend([0, 0])  # Relleno para posiciones
+        while len(laser_distances) < expected_count:
+            laser_distances.append(float('inf'))  # Relleno para distancias
+
+        # Aplanar y rellenar la lista de posiciones y distancias para los obstáculos
+        obstacle_positions = [coord for pos in game_state['obstacle_positions'] for coord in pos]
+        obstacle_distances = game_state['obstacle_distances']
+        while len(obstacle_positions) < expected_count * 2:
+            obstacle_positions.extend([0, 0])  # Relleno para posiciones
+        while len(obstacle_distances) < expected_count:
+            obstacle_distances.append(float('inf'))  # Relleno para distancias
+
+        # Concatenar todas las entradas en un solo vector de entrada
+        input_data = np.concatenate([
+            player_pos,
+            alien_positions, alien_distances,
+            laser_positions, laser_distances,
+            obstacle_positions, obstacle_distances
+        ])
+
         return input_data
 
     def select_best_individuals(self, fitness_scores, num_best=2):
