@@ -235,6 +235,12 @@ class Game:
 
         if not self.aliens.sprites():
             reward += 2000 - (time.time() - start_time)
+        
+        # Verificar si el jugador está tocando los bordes de la pantalla
+        if self.player.sprite.rect.left <= 0:
+            reward -= 50
+        elif self.player.sprite.rect.right >= self.screen_width:
+            reward -= 50
 
         return reward
     

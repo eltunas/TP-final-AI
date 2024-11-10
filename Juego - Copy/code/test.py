@@ -5,7 +5,7 @@ import sys
 
 # Cargar el modelo entrenado
 
-loaded_model = tf.keras.models.load_model('resultado_1.keras')
+loaded_model = tf.keras.models.load_model('best_model_gen_47.keras')
 
 
 # Crear una instancia del juego
@@ -27,10 +27,10 @@ def play_game(model, game):
 
 
     start_time = time.time()  # Para limitar el tiempo de juego si es necesario
-    time_limit = 60  # Puedes ajustar este valor según el tiempo que desees que dure la simulación
+    time_limit = 180  # Puedes ajustar este valor según el tiempo que desees que dure la simulación
 
     ALIENLASER = pygame.USEREVENT + 1
-    pygame.time.set_timer(ALIENLASER, 800)
+    pygame.time.set_timer(ALIENLASER, 600)
 
     while not done:
         # Calcular el tiempo transcurrido
@@ -40,10 +40,15 @@ def play_game(model, game):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            
+            if event.type == ALIENLASER:
+                    game.alien_shoot()
 
         # Obtener el estado del juego
         game_state = game.get_game_state()  # Asegúrate de que este método existe y devuelve el estado correcto
-        input_data = preprocess_game_state(game_state).reshape(1, -1)  # Preprocesar el estado
+        input_data = preprocess_game_state(game_state)
+        input_data = np.nan_to_num(input_data, nan=0, posinf=1e6, neginf=-1e6)
+        input_data = np.expand_dims(input_data, axis=0)
 
         # Obtener las probabilidades de las acciones
         action_probs = model.predict(input_data, verbose=0)[0]
@@ -59,39 +64,41 @@ def play_game(model, game):
         _, reward, done = game.step(action, start_time)
         total_score += reward
 
+        game.screen.fill((30, 30, 30))
+        game.run()
+        pygame.display.flip()
+        clock.tick(60)
 
-        # Actualizar la pantalla y dibujar el juego
-        game.screen.fill((30, 30, 30))  # Fondo oscuro para la pantalla
-        game.run()  # Asegúrate de que este método actualiza el estado visual del juego
-
-        # Mostrar el tiempo transcurrido en la parte superior
-        timer_text = pygame.font.Font(None, 36).render(f"Tiempo: {elapsed_time}s", True, (255, 255, 255))
-        text_rect = timer_text.get_rect(center=(game.screen.get_width() // 2, 20))
-        game.screen.blit(timer_text, text_rect)
-
-        pygame.display.flip()  # Actualiza la pantalla
-        clock.tick(60)  # Controlar la velocidad del juego (FPS)
-
-        if elapsed_time > time_limit:  # Finaliza después de cierto tiempo
-            done = True
 
 
     print(f"Juego terminado. Su puntaje fue: {total_score}")
 
 
 
-def preprocess_game_state(game_state):
-    """Preprocesa el estado del juego para convertirlo en una entrada válida para el modelo."""
-    player_pos = np.array(game_state['player_position'])
-    alien_pos, alien_distance = game_state['closest_alien']
-    laser_pos, laser_distance = game_state['closest_alien_laser']
-    obstacle_pos, obstacle_distance = game_state['closest_obstacle']
-    
-    alien_pos = np.array(alien_pos) if alien_pos else np.zeros(2)
-    laser_pos = np.array(laser_pos) if laser_pos else np.zeros(2)
-    obstacle_pos = np.array(obstacle_pos) if obstacle_pos else np.zeros(2)
-    
-    input_data = np.concatenate([player_pos, alien_pos, [alien_distance], laser_pos, [laser_distance], obstacle_pos, [obstacle_distance]])
-    return input_data
+def preprocess_game_state(game_state, expected_count=5):
+        # 1. Posición del jugador (normalizada por el ancho de la ventana)
+        player_pos = np.array(game_state['player_position'])
+        # 2. Distancias relativas de los enemigos
+        alien_distances = game_state['alien_distances']
+        while len(alien_distances) < expected_count:  # Asegura que haya 'expected_count' valores
+            alien_distances.append(0)  # Relleno con 0 si hay menos de 'expected_count' valores
+        
+        # 4. Distancias relativas de los láseres enemigos
+        enemy_laser_distances = game_state['enemy_laser_distances']
+        while len(enemy_laser_distances) < expected_count:  # Asegura que haya 'expected_count' valores
+            enemy_laser_distances.append(0)  # Relleno con 0 si hay menos de 'expected_count' valores
+        
+        # 5. Dirección de los enemigos
+        enemy_direction = game_state['enemy_direction']
+
+        # Concatenar todas las entradas en un solo vector de entrada
+        input_data = np.concatenate([
+            [player_pos],  # Solo la posición x del jugador, ya que el y no es relevante para la entrada
+            alien_distances,  # Distancias relativas de los enemigos
+            enemy_laser_distances,  # Distancias relativas de los láseres enemigos
+            [enemy_direction]  # Dirección de los enemigos
+        ])
+        
+        return input_data
 
 play_game(loaded_model, game)

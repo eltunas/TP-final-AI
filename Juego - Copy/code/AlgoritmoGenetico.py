@@ -19,15 +19,16 @@ class GeneticAlgorithm:
         self.population = self.initialize_population()
         self.level = 2
         self.win_count = 0
+        self.generation = 0 
 
     def build_model(self):
         model = tf.keras.Sequential([
             tf.keras.layers.InputLayer(input_shape=(self.input_size,)),
             tf.keras.layers.Normalization(axis=-1),
             # Cambiar las capas ocultas a 100 neuronas
-            tf.keras.layers.Dense(100, activation='relu', kernel_initializer='he_normal'),
-            tf.keras.layers.Dense(100, activation='relu', kernel_initializer='he_normal'),
-            tf.keras.layers.Dense(100, activation='relu', kernel_initializer='he_normal'),
+            tf.keras.layers.Dense(100, activation='swish', kernel_initializer='he_normal'),
+            tf.keras.layers.Dense(100, activation='leaky_relu', kernel_initializer='he_normal'),
+            tf.keras.layers.Dense(100, activation='swish', kernel_initializer='he_normal'),
             # Capa de salida con softmax para las probabilidades de las acciones
             tf.keras.layers.Dense(self.output_size, activation='softmax')
         ])
@@ -108,7 +109,7 @@ class GeneticAlgorithm:
             input_data = np.nan_to_num(input_data, nan=0, posinf=1e6, neginf=-1e6)
             input_data = np.expand_dims(input_data, axis=0)
 
-            epsilon = max(0.01, 1 - generation * 0.01) # Decaimiento de exploración
+            epsilon = max(0.01, 1 - generation * 0.05) # Decaimiento de exploración
             
             action_probs = model.predict(input_data, verbose=0)[0]
 
@@ -137,6 +138,15 @@ class GeneticAlgorithm:
 
         print(total_score)
         return total_score
+
+    def export_best_model(self, fitness_scores):
+        # Get the index of the best model based on fitness scores
+        best_index = np.argmax(fitness_scores)
+        best_model = self.population[best_index]
+        # Save the weights to a file
+        best_model.save(f'best_model_gen_{self.generation}.keras')
+
+        self.generation+=1
 
     def preprocess_game_state(self, game_state, expected_count=5):
         """Preprocesa el estado del juego para convertirlo en un vector de entrada listo para el modelo."""
@@ -278,6 +288,8 @@ class GeneticAlgorithm:
             best_individuals = self.select_best_individuals(fitness_scores)
 
             self.population = self.create_new_generation(best_individuals, generation)
+
+            self.export_best_model(fitness_scores)
             print(f"Generación {generation}: Mejor puntaje = {max(fitness_scores)}")
 
         # Obtener el mejor modelo entrenado
