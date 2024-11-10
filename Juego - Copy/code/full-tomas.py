@@ -76,6 +76,20 @@ class PlayerGame:
         self.time_limit = 45  # Límite de tiempo en segundos
         self.start_time = time.time()  # Guarda el tiempo de inicio
 
+        self.last_life_loss_time = 0
+
+    def check_border_collision(self):
+        current_time = time.time()
+        
+        # Verifica si el jugador está tocando los bordes de la pantalla
+        if self.player.sprite.rect.left <= 0 or self.player.sprite.rect.right >= self.screen_width:
+            # Comprueba si ha pasado al menos 1 segundo desde la última pérdida de vida
+            if current_time - self.last_life_loss_time >= 5:
+                self.lives -= 1
+                logging.info(f'Player {self.player_id} hit the border. Remaining lives: {self.lives}')
+                self.last_life_loss_time = current_time  # Actualiza el tiempo de la última pérdida de vida
+
+
     def run(self):
         # Actualizar lógica del juego
         self.player.update()
@@ -85,6 +99,8 @@ class PlayerGame:
         self.alien_position_checker()
         self.extra_alien_timer()
         self.collision_checks()
+
+        self.check_border_collision()
 
         # Manejar el evento de disparo de aliens
         for event in pygame.event.get():
@@ -217,8 +233,8 @@ class PlayerGame:
         current_time = time.time()
         elapsed_time = current_time - self.start_time
         #ARREGLAR PARA MULTIPLES PLAYER
-        if elapsed_time >= self.time_limit:
-            done = True  # Indica que el juego ha terminado
+        #if elapsed_time >= self.time_limit:
+        #    done = True  # Indica que el juego ha terminado
         if(40>len(self.aliens) ):
             done = True
         
@@ -250,6 +266,12 @@ class PlayerGame:
         # Penalización por acercarse a un disparo
         closest_laser, laser_distance = self.get_closest(self.alien_lasers, self.player.sprite.rect.center)
         if closest_laser and laser_distance < 50:  # Penaliza si el jugador está muy cerca de un disparo
+            reward -= 5
+
+                # Verificar si el jugador está tocando los bordes de la pantalla
+        if self.player.sprite.rect.left <= 0:
+            reward -= 5
+        elif self.player.sprite.rect.right >= self.screen_width:
             reward -= 5
 
         return reward
@@ -284,7 +306,7 @@ class PlayerGame:
         # Alien setup
         self.aliens = pygame.sprite.Group()
         self.alien_lasers = pygame.sprite.Group()
-        self.alien_setup(rows=6, cols=8)
+        self.alien_setup(rows=6, cols=12)
         self.alien_direction = 1
 
         # Extra setup
