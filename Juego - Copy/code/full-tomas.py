@@ -527,14 +527,9 @@ class GeneticAlgorithm:
 
         # Usar crossover ponderado o uniforme
         for w1, w2 in zip(parent1_weights, parent2_weights):
-            if random.random() < 0.5:
-                # Crossover ponderado
-                alpha = fitness1 / (fitness1 + fitness2) if (fitness1 + fitness2) > 0 else 0.5
-                child_weight = alpha * w1 + (1 - alpha) * w2
-            else:
-                # Crossover uniforme
-                mask = np.random.rand(*w1.shape) < 0.5
-                child_weight = np.where(mask, w1, w2)
+            # Crossover ponderado
+            alpha = fitness1 / (fitness1 + fitness2) if (fitness1 + fitness2) > 0 else 0.5
+            child_weight = alpha * w1 + (1 - alpha) * w2
             child_weights.append(child_weight)
 
         # Crear el modelo hijo con los pesos combinados
