@@ -446,8 +446,8 @@ class PlayerGame:
             player_pos[0],  # Posición del jugador
             player_velocity_x,  # Velocidad del jugador
             dplayer_relative_x,  # Distancia a los bordes izquierdo y derecho
-            *alien_data,  # Datos de los 5 alienígenas más cercanos (incluye posición relativa en x)
-            *laser_data,  # Datos de los 5 láseres más cercanos (incluye posición relativa en x)
+            *alien_data,  # Datos de los 1 alienígenas más cercanos (incluye posición relativa en x)
+            *laser_data,  # Datos de los 3 láseres más cercanos (incluye posición relativa en x)
             aligned_enemy
         ]
 
@@ -501,6 +501,9 @@ class GeneticAlgorithm:
         self.crossover_rate = crossover_rate
         self.models = [self._build_model(input_size, hidden_size, output_size) for _ in range(population_size)]
         self.generation = 0
+        self.loadModel = False
+        self.modelLoaded = False
+        self.modelToLoadPath = './best_model_weights_gen_30.h5'
 
     def _build_model(self, input_size, hidden_size, output_size):
 
@@ -517,6 +520,10 @@ class GeneticAlgorithm:
 
 
         optimizer = Adam(learning_rate=0.001)
+
+        if(self.loadModel and not self.modelLoaded):
+            model.load_weights(self.modelToLoadPath)
+            self.modelLoaded = True  
 
         model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
