@@ -139,27 +139,34 @@ class GeneticAlgorithm:
         return total_score
 
     def preprocess_game_state(self, game_state, expected_count=5):
-        # 1. Posición del jugador (normalizada por el ancho de la ventana)
-        player_pos = np.array(game_state['player_position'])
-        # 2. Distancias relativas de los enemigos
-        alien_distances = game_state['alien_distances']
-        while len(alien_distances) < expected_count:  # Asegura que haya 'expected_count' valores
-            alien_distances.append(0)  # Relleno con 0 si hay menos de 'expected_count' valores
+        """Preprocesa el estado del juego para convertirlo en un vector de entrada listo para el modelo."""
         
-        # 4. Distancias relativas de los láseres enemigos
-        enemy_laser_distances = game_state['enemy_laser_distances']
-        while len(enemy_laser_distances) < expected_count:  # Asegura que haya 'expected_count' valores
-            enemy_laser_distances.append(0)  # Relleno con 0 si hay menos de 'expected_count' valores
+        # 1. Posición del jugador (normalizada en el eje x)
+        player_pos = np.array([game_state['player_position']])  # Convertido a array para la concatenación posterior
         
-        # 5. Dirección de los enemigos
-        enemy_direction = game_state['enemy_direction']
+        # 2. Distancias relativas de los enemigos en el eje x
+        alien_distances = game_state['alien_x_distances']
+        if len(alien_distances) < expected_count:
+            # Relleno con 0 hasta alcanzar el número esperado
+            alien_distances += [0] * (expected_count - len(alien_distances))
+        alien_distances = np.array(alien_distances)  # Convertido a array para el modelo
+        
+        # 3. Distancias relativas de los láseres enemigos en el eje x
+        enemy_laser_distances = game_state['enemy_laser_x_distances']
+        if len(enemy_laser_distances) < expected_count:
+            # Relleno con 0 hasta alcanzar el número esperado
+            enemy_laser_distances += [0] * (expected_count - len(enemy_laser_distances))
+        enemy_laser_distances = np.array(enemy_laser_distances)  # Convertido a array para el modelo
+        
+        # 4. Dirección general de los enemigos en el eje x
+        enemy_direction = np.array([game_state['enemy_direction']])  # Convertido a array para la concatenación
 
-        # Concatenar todas las entradas en un solo vector de entrada
+        # 5. Concatenar todas las entradas en un solo vector
         input_data = np.concatenate([
-            [player_pos],  # Solo la posición x del jugador, ya que el y no es relevante para la entrada
-            alien_distances,  # Distancias relativas de los enemigos
-            enemy_laser_distances,  # Distancias relativas de los láseres enemigos
-            [enemy_direction]  # Dirección de los enemigos
+            player_pos,               # Posición normalizada del jugador en el eje x
+            alien_distances,          # Distancias relativas de los enemigos más cercanos
+            enemy_laser_distances,    # Distancias relativas de los láseres enemigos más cercanos
+            enemy_direction           # Dirección general de los enemigos
         ])
         
         return input_data

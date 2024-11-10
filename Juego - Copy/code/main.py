@@ -281,57 +281,50 @@ class Game:
         self.extra = pygame.sprite.GroupSingle()
         self.extra_spawn_time = randint(40, 80)
 
-    def get_closest_n(self, sprite_group, position, n=6):
-        """Devuelve las n distancias relativas más cercanas en el grupo y las distancias a la posición dada."""
+    def get_closest_n(self, sprite_group, position, n=5):
+        """Devuelve las n posiciones relativas en el eje x más cercanas en el grupo, normalizadas por el ancho de la pantalla."""
         distances = []
-        
+
         for sprite in sprite_group.sprites():
-            distance = np.linalg.norm(np.array(sprite.rect.center) - np.array(position))
-            distances.append((sprite, distance))
-        
-        # Ordena los sprites por distancia y devuelve los n más cercanos
+            # Calcula la distancia en el eje x y normaliza
+            distance_x = (sprite.rect.centerx - position[0]) / self.screen_width
+            distances.append((sprite, abs(distance_x)))  # Guarda la distancia absoluta y el sprite
+
+        # Ordena por la distancia en el eje x y selecciona los n más cercanos
         closest_sprites = sorted(distances, key=lambda x: x[1])[:n]
-        
-        # Solo devuelve las distancias
-        closest_distances = [distance for _, distance in closest_sprites]
-        
-        # Si hay menos de n objetos, rellena con valores por defecto
-        while len(closest_distances) < n:
-            closest_distances.append(float('inf'))  # Distancia infinita o un valor alto
-        
-        return closest_distances
+
+        # Devuelve solo las posiciones relativas normalizadas en el eje x
+        closest_x_distances = [(sprite.rect.centerx - position[0]) / self.screen_width for sprite, _ in closest_sprites]
+
+        # Si hay menos de n objetos, rellena con valores por defecto (por ejemplo, 0.0)
+        while len(closest_x_distances) < n:
+            closest_x_distances.append(0.0)  # Valor neutro o muy alto para indicar ausencia
+
+        return closest_x_distances
 
 
     def get_game_state(self):
-        """Obtiene el estado del juego, incluyendo las observaciones requeridas por el agente."""
+        """Obtiene el estado del juego, incluyendo la posición del jugador y las posiciones relativas de enemigos y láseres."""
         
-        # 1. Obtener la posición del jugador normalizada (por el ancho de la ventana)
+        # 1. Obtener la posición normalizada del jugador en el eje x
         player_pos = self.player.sprite.rect.center
-        player_x_normalized = player_pos[0] / self.screen_width  # Normaliza por el ancho de la pantalla
-        
-        # 2. Obtener las distancias relativas de los enemigos (normalizadas por la altura de la ventana)
-        alien_distances = self.get_closest_n(self.aliens, player_pos, n=5)
-        alien_distances_normalized = [
-            (dist / self.screen_height) * (1 if sprite.rect.center[0] > player_pos[0] else -1)
-            for sprite, dist in zip(self.aliens.sprites(), alien_distances)
-        ]
-        
-        # 4. Obtener las distancias relativas de los láseres enemigos (normalizadas por la altura de la ventana)
-        enemy_laser_distances = self.get_closest_n(self.alien_lasers, player_pos, n=5)
-        enemy_laser_distances_normalized = [
-            (dist / self.screen_height) * (1 if sprite.rect.center[0] > player_pos[0] else -1)
-            for sprite, dist in zip(self.alien_lasers.sprites(), enemy_laser_distances)
-        ]
-        
-        # 5. Dirección del enemigo: -0.5 para mover a la izquierda, +0.5 para mover a la derecha
-        enemy_direction = 0.5 if any(sprite.rect.center[0] > self.screen_width // 2 for sprite in self.aliens.sprites()) else -0.5
-        
-        # Crear un diccionario con las 5 observaciones
+        player_x_normalized = player_pos[0] / self.screen_width  # Normaliza en el eje x
+
+        # 2. Obtener las posiciones relativas de los 5 aliens más cercanos en el eje x
+        alien_x_distances = self.get_closest_n(self.aliens, player_pos, n=5)
+
+        # 3. Obtener las posiciones relativas de los 5 láseres enemigos más cercanos en el eje x
+        enemy_laser_x_distances = self.get_closest_n(self.alien_lasers, player_pos, n=5)
+
+        # 4. Direccion general de los enemigos en el eje x (aproximación simple)
+        enemy_direction = 0.5 if any(sprite.rect.centerx > player_pos[0] for sprite in self.aliens.sprites()) else -0.5
+
+        # Crear el diccionario de estado del juego
         game_state = {
-            'player_position': player_x_normalized,  # Posición normalizada del jugador
-            'alien_distances': alien_distances_normalized,  # Distancias relativas de los enemigos
-            'enemy_laser_distances': enemy_laser_distances_normalized,  # Distancias relativas de los láseres enemigos
-            'enemy_direction': enemy_direction  # Dirección de los enemigos
+            'player_position': player_x_normalized,        # Posición normalizada del jugador en el eje x
+            'alien_x_distances': alien_x_distances,        # Posiciones relativas en el eje x de los aliens más cercanos
+            'enemy_laser_x_distances': enemy_laser_x_distances,  # Posiciones relativas en el eje x de los láseres enemigos
+            'enemy_direction': enemy_direction             # Dirección general de los enemigos en el eje x
         }
         
         return game_state
