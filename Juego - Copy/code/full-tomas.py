@@ -233,10 +233,8 @@ class PlayerGame:
         current_time = time.time()
         elapsed_time = current_time - self.start_time
         #ARREGLAR PARA MULTIPLES PLAYER
-        #if elapsed_time >= self.time_limit:
-        #    done = True  # Indica que el juego ha terminado
-        if(40>len(self.aliens) ):
-            done = True
+        if elapsed_time >= self.time_limit:
+            done = True  # Indica que el juego ha terminado
         
         # Devolver el nuevo estado, recompensa, indicador de fin
         return state, reward, done
@@ -268,7 +266,17 @@ class PlayerGame:
         if closest_laser and laser_distance < 50:  # Penaliza si el jugador está muy cerca de un disparo
             reward -= 5
 
-                # Verificar si el jugador está tocando los bordes de la pantalla
+        # Penalización si no hay enemigos alineados en x con el jugador, esto intenta que no mate todos los enemigos del medio y se quede ahi
+        aligned_enemy = any(
+            alien.rect.right > self.player.sprite.rect.left and alien.rect.left < self.player.sprite.rect.right
+            for alien in self.aliens
+        )
+        if not aligned_enemy:
+            reward -= 3 # Penalización si no hay enemigos alineados en x
+            logging.info(f'Player {self.player_id} penalized for lack of aligned enemies. Penalty: -1')
+
+
+        # Verificar si el jugador está tocando los bordes de la pantalla
         if self.player.sprite.rect.left <= 0:
             reward -= 5
         elif self.player.sprite.rect.right >= self.screen_width:
@@ -400,6 +408,11 @@ class PlayerGame:
         player_velocity_x = player_velocity[0]
         player_velocity_y = player_velocity[1]
 
+        aligned_enemy = int(any(
+            alien.rect.right > player_left_edge and alien.rect.left < player_right_edge
+            for alien in self.aliens
+        ))
+
         # Crear el estado del juego como un vector
         game_state = [
             player_pos[0], player_pos[1],  # Posición del jugador
@@ -408,6 +421,7 @@ class PlayerGame:
             distance_to_left_edge, distance_to_right_edge,  # Distancia a los bordes izquierdo y derecho
             *alien_data,  # Datos de los 5 alienígenas más cercanos (incluye posición relativa en x)
             *laser_data,  # Datos de los 5 láseres más cercanos (incluye posición relativa en x)
+            #aligned_enemy
         ]
 
         return game_state
@@ -479,8 +493,8 @@ class GeneticAlgorithm:
 
         model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
-        if(False):
-            model.load_weights('./best_model_weights_gen_8.h5')  
+        if(True):
+            model.load_weights('./best_model_weights_gen_30.h5')  
 
         return model
 
@@ -577,10 +591,10 @@ def main():
     pygame.init()  # Inicializar Pygame una sola vez al principio
     screen_width = 800
     screen_height = 600
-    num_players = 6
+    num_players = 1
     num_games = 1
-    num_gens = 30
-    population_size = num_players
+    num_gens = 1
+    population_size = num_games
     mutation_rate = 0.1
     crossover_rate = 0.7
     input_size = 69
