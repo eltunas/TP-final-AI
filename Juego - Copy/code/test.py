@@ -5,7 +5,7 @@ import sys
 
 # Cargar el modelo entrenado
 
-loaded_model = tf.keras.models.load_model('best_model.keras')
+loaded_model = tf.keras.models.load_model('resultado_1.keras')
 
 
 # Crear una instancia del juego
@@ -40,8 +40,6 @@ def play_game(model, game):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if event.type == ALIENLASER:
-                game.alien_shoot()
 
         # Obtener el estado del juego
         game_state = game.get_game_state()  # Asegúrate de que este método existe y devuelve el estado correcto

@@ -17,16 +17,23 @@ class GeneticAlgorithm:
         self.input_size = input_size
         self.output_size = output_size
         self.population = self.initialize_population()
-        self.level = 1
+        self.level = 2
         self.win_count = 0
 
     def build_model(self):
         model = tf.keras.Sequential([
-            tf.keras.layers.Flatten(input_shape=self.input_size),
-            tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dense(32, activation='relu'),
-            tf.keras.layers.Dense(self.output_size, activation='softmax')  # Suponiendo salida de probabilidades de acciones
+            tf.keras.layers.InputLayer(input_shape=(self.input_size,)),
+            tf.keras.layers.Normalization(axis=-1),
+            # Cambiar las capas ocultas a 100 neuronas
+            tf.keras.layers.Dense(100, activation='relu', kernel_initializer='he_normal'),
+            tf.keras.layers.Dense(100, activation='relu', kernel_initializer='he_normal'),
+            tf.keras.layers.Dense(100, activation='relu', kernel_initializer='he_normal'),
+            # Capa de salida con softmax para las probabilidades de las acciones
+            tf.keras.layers.Dense(self.output_size, activation='softmax')
         ])
+
+        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-6), 
+                      loss='mean_squared_error')  # Usamos MSE para Deep Q-Learning
         return model
 
     def initialize_population(self):
@@ -50,49 +57,32 @@ class GeneticAlgorithm:
         if self.level == 1:
             shoot = False
             shoot_speed = 0
-            time_limit= 60
+            time_limit= 15
 
-            if generation > 15:
-                time_limit = 120
+            if generation > 20:
+                time_limit = 60
 
             elif generation > 10:
-                time_limit = 90
+                time_limit = 30
         
         elif self.level == 2:
             shoot = True
             shoot_speed = 600
-            time_limit = 120
+            time_limit = 30
+
+            if generation > 50:
+                time_limit = 180
+            elif generation > 30:
+                time_limit = 120
+            elif generation>15:
+                time_limit=60
+
+
 
         elif self.level == 3:
             shoot = True
             shoot_speed = 300
             time_limit = 180
-
-        """
-        if generation > 0:
-            shoot = True
-        else:
-            shoot = False
-        
-        if generation > 15:
-            shoot_speed = 200
-        elif generation > 10:
-            shoot_speed = 400
-        else:
-            shoot_speed= 600
-
-
-        start_time = time.time()  # Iniciar el temporizador
-
-        if generation > 10:
-            time_limit = 180
-        elif generation > 5:
-            time_limit = 120
-        elif generation > 2:
-            time_limit = 60
-        else:
-            time_limit = 30
-        """
 
         start_time = time.time()  # Iniciar el temporizador
 
@@ -114,7 +104,9 @@ class GeneticAlgorithm:
                     game.alien_shoot()
 
             game_state = game.get_game_state()
-            input_data = self.preprocess_game_state(game_state).reshape(1,1,-1)
+            input_data = self.preprocess_game_state(game_state)
+            input_data = np.nan_to_num(input_data, nan=0, posinf=1e6, neginf=-1e6)
+            input_data = np.expand_dims(input_data, axis=0)
 
             epsilon = max(0.01, 1 - generation * 0.01) # Decaimiento de exploración
             
@@ -147,40 +139,29 @@ class GeneticAlgorithm:
         return total_score
 
     def preprocess_game_state(self, game_state, expected_count=5):
+        # 1. Posición del jugador (normalizada por el ancho de la ventana)
         player_pos = np.array(game_state['player_position'])
-
-        # Aplanar y rellenar la lista de posiciones y distancias para los aliens
-        alien_positions = [coord for pos in game_state['alien_positions'] for coord in pos]
+        # 2. Distancias relativas de los enemigos
         alien_distances = game_state['alien_distances']
-        while len(alien_positions) < expected_count * 2:  # Cada posición tiene 2 valores (x, y)
-            alien_positions.extend([0, 0])  # Relleno para posiciones
-        while len(alien_distances) < expected_count:
-            alien_distances.append(float('inf'))  # Relleno para distancias
-
-        # Aplanar y rellenar la lista de posiciones y distancias para los láseres
-        laser_positions = [coord for pos in game_state['laser_positions'] for coord in pos]
-        laser_distances = game_state['laser_distances']
-        while len(laser_positions) < expected_count * 2:
-            laser_positions.extend([0, 0])  # Relleno para posiciones
-        while len(laser_distances) < expected_count:
-            laser_distances.append(float('inf'))  # Relleno para distancias
-
-        # Aplanar y rellenar la lista de posiciones y distancias para los obstáculos
-        obstacle_positions = [coord for pos in game_state['obstacle_positions'] for coord in pos]
-        obstacle_distances = game_state['obstacle_distances']
-        while len(obstacle_positions) < expected_count * 2:
-            obstacle_positions.extend([0, 0])  # Relleno para posiciones
-        while len(obstacle_distances) < expected_count:
-            obstacle_distances.append(float('inf'))  # Relleno para distancias
+        while len(alien_distances) < expected_count:  # Asegura que haya 'expected_count' valores
+            alien_distances.append(0)  # Relleno con 0 si hay menos de 'expected_count' valores
+        
+        # 4. Distancias relativas de los láseres enemigos
+        enemy_laser_distances = game_state['enemy_laser_distances']
+        while len(enemy_laser_distances) < expected_count:  # Asegura que haya 'expected_count' valores
+            enemy_laser_distances.append(0)  # Relleno con 0 si hay menos de 'expected_count' valores
+        
+        # 5. Dirección de los enemigos
+        enemy_direction = game_state['enemy_direction']
 
         # Concatenar todas las entradas en un solo vector de entrada
         input_data = np.concatenate([
-            player_pos,
-            alien_positions, alien_distances,
-            laser_positions, laser_distances,
-            obstacle_positions, obstacle_distances
+            [player_pos],  # Solo la posición x del jugador, ya que el y no es relevante para la entrada
+            alien_distances,  # Distancias relativas de los enemigos
+            enemy_laser_distances,  # Distancias relativas de los láseres enemigos
+            [enemy_direction]  # Dirección de los enemigos
         ])
-
+        
         return input_data
 
     def select_best_individuals(self, fitness_scores, num_best=2):
@@ -189,41 +170,78 @@ class GeneticAlgorithm:
         return [self.population[i] for i in best_indices]
 
     def crossover(self, parent1, parent2):
-        """Realiza cruce entre dos individuos para producir un nuevo conjunto de pesos."""
-        child_model = self.build_model()  # Crear un nuevo modelo vacío
+        """Realiza cruce entre dos individuos utilizando punto de corte para mantener diversidad genética."""
+        child_model = self.build_model()  # Crea un nuevo modelo vacío
+        
         for layer1, layer2, child_layer in zip(parent1.layers, parent2.layers, child_model.layers):
-            # Promediar los pesos entre los padres
-            weights1, biases1 = layer1.get_weights()
-            weights2, biases2 = layer2.get_weights()
+            # Asegúrate de que las capas sean Dense (que tienen pesos)
+            if isinstance(layer1, tf.keras.layers.Dense) and isinstance(layer2, tf.keras.layers.Dense):
+                weights1, biases1 = layer1.get_weights()
+                weights2, biases2 = layer2.get_weights()
 
-            new_weights = (weights1 + weights2) / 2
-            new_biases = (biases1 + biases2) / 2
-            child_layer.set_weights([new_weights, new_biases])
+                mask = np.random.rand(*weights1.shape) > 0.5
+                new_weights = np.where(mask, weights1, weights2)
+                new_biases = np.where(mask[0], biases1, biases2)  # Máscara para sesgo también
+
+                child_layer.set_weights([new_weights, new_biases])
+            # Si es una capa que no tiene pesos, simplemente la copiamos tal cual
+            else:
+                child_layer.set_weights(layer1.get_weights())
 
         return child_model
 
-    def mutate(self, model):
-        """Aplica mutación aleatoria a un modelo."""
+    def mutate(self, model, generation):
+        """Mutación aleatoria con mayor probabilidad de cambio en generaciones tempranas."""
         for layer in model.layers:
-            weights, biases = layer.get_weights()
+            # Para capas como Dense, que tienen pesos y sesgos
+            if isinstance(layer, tf.keras.layers.Dense):
+                weights, biases = layer.get_weights()
 
-            # Mutación en los pesos
-            if np.random.rand() < self.mutation_rate:
-                weights += np.random.normal(scale=0.1, size=weights.shape)
-            if np.random.rand() < self.mutation_rate:
-                biases += np.random.normal(scale=0.1, size=biases.shape)
+                # Aumentamos la perturbación en las primeras generaciones
+                mutation_scale = max(0.1, 1.0 / (generation + 1))  # Reduce la perturbación conforme aumentan las generaciones
 
-            layer.set_weights([weights, biases])
+                # Si la mutación está habilitada, realizamos el cambio con la escala adaptativa
+                if np.random.rand() < self.mutation_rate:
+                    weights += np.random.normal(scale=mutation_scale, size=weights.shape)  # Perturbación para pesos
+                if np.random.rand() < self.mutation_rate:
+                    biases += np.random.normal(scale=mutation_scale, size=biases.shape)  # Perturbación para los sesgos
 
+                # Establecer los nuevos pesos y sesgos
+                layer.set_weights([weights, biases])
+
+            # Para capas de Normalización (como tf.keras.layers.Normalization)
+            elif isinstance(layer, tf.keras.layers.LayerNormalization):
+                # Las capas de normalización pueden tener más de dos valores, por ejemplo gamma y beta
+                weights = layer.get_weights()
+
+                # Verificar si se obtuvo gamma y beta (típicamente, se deben manejar como gamma y beta)
+                if len(weights) == 2:
+                    gamma, beta = weights
+                    # Aumentamos la perturbación en las primeras generaciones
+                    mutation_scale = max(0.1, 1.0 / (generation + 1))  # Reduce la perturbación conforme aumentan las generaciones
+
+                    # Si la mutación está habilitada, realizamos el cambio con la escala adaptativa
+                    if np.random.rand() < self.mutation_rate:
+                        gamma += np.random.normal(scale=mutation_scale, size=gamma.shape)  # Perturbación para gamma
+                    if np.random.rand() < self.mutation_rate:
+                        beta += np.random.normal(scale=mutation_scale, size=beta.shape)  # Perturbación para beta
+
+                    # Establecer los nuevos gamma y beta
+                    layer.set_weights([gamma, beta])
+                else:
+                    # Si la capa de normalización tiene más pesos, manejarlos de acuerdo a su estructura
+                    print(f"Advertencia: La capa de Normalization tiene {len(weights)} pesos, no se mutan.")
+                    
+            # Otros tipos de capas pueden ser manejados aquí si es necesario (por ejemplo, Dropout, BatchNormalization, etc.)
         return model
 
-    def create_new_generation(self, best_individuals):
+    def create_new_generation(self, best_individuals, generation):
         """Crea una nueva generación usando los mejores individuos y aplicando cruce y mutación."""
         new_population = []
         while len(new_population) < self.population_size:
             parent1, parent2 = random.sample(best_individuals, 2)
             child = self.crossover(parent1, parent2)
-            child = self.mutate(child)
+            child = self.mutate(child, generation)
             new_population.append(child)
         return new_population
 
@@ -252,7 +270,7 @@ class GeneticAlgorithm:
             # Seleccionar los mejores individuos y generar la nueva población
             best_individuals = self.select_best_individuals(fitness_scores)
 
-            self.population = self.create_new_generation(best_individuals)
+            self.population = self.create_new_generation(best_individuals, generation)
             print(f"Generación {generation}: Mejor puntaje = {max(fitness_scores)}")
 
         # Obtener el mejor modelo entrenado

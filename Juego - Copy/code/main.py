@@ -281,8 +281,8 @@ class Game:
         self.extra = pygame.sprite.GroupSingle()
         self.extra_spawn_time = randint(40, 80)
 
-    def get_closest_n(self, sprite_group, position, n=5):
-        """Devuelve los n sprites más cercanos en el grupo y sus distancias a la posición dada."""
+    def get_closest_n(self, sprite_group, position, n=6):
+        """Devuelve las n distancias relativas más cercanas en el grupo y las distancias a la posición dada."""
         distances = []
         
         for sprite in sprite_group.sprites():
@@ -292,41 +292,48 @@ class Game:
         # Ordena los sprites por distancia y devuelve los n más cercanos
         closest_sprites = sorted(distances, key=lambda x: x[1])[:n]
         
-        # Separa los sprites y sus distancias en listas
-        closest_positions = [sprite.rect.center for sprite, _ in closest_sprites]
+        # Solo devuelve las distancias
         closest_distances = [distance for _, distance in closest_sprites]
         
         # Si hay menos de n objetos, rellena con valores por defecto
-        while len(closest_positions) < n:
-            closest_positions.append((0, 0))  # Posición por defecto para los slots vacíos
+        while len(closest_distances) < n:
             closest_distances.append(float('inf'))  # Distancia infinita o un valor alto
         
-        return closest_positions, closest_distances
+        return closest_distances
+
 
     def get_game_state(self):
-        """Obtiene el estado del juego, incluyendo los 5 elementos más cercanos y la posición del jugador."""
+        """Obtiene el estado del juego, incluyendo las observaciones requeridas por el agente."""
+        
+        # 1. Obtener la posición del jugador normalizada (por el ancho de la ventana)
         player_pos = self.player.sprite.rect.center
-
-        # Obtener los 5 aliens más cercanos
-        alien_positions, alien_distances = self.get_closest_n(self.aliens, player_pos, n=5)
-
-        # Obtener los 5 láseres de alien más cercanos
-        laser_positions, laser_distances = self.get_closest_n(self.alien_lasers, player_pos, n=5)
-
-        # Obtener los 5 obstáculos más cercanos
-        obstacle_positions, obstacle_distances = self.get_closest_n(self.blocks, player_pos, n=5)
-
-        # Crear un diccionario con el estado
+        player_x_normalized = player_pos[0] / self.screen_width  # Normaliza por el ancho de la pantalla
+        
+        # 2. Obtener las distancias relativas de los enemigos (normalizadas por la altura de la ventana)
+        alien_distances = self.get_closest_n(self.aliens, player_pos, n=5)
+        alien_distances_normalized = [
+            (dist / self.screen_height) * (1 if sprite.rect.center[0] > player_pos[0] else -1)
+            for sprite, dist in zip(self.aliens.sprites(), alien_distances)
+        ]
+        
+        # 4. Obtener las distancias relativas de los láseres enemigos (normalizadas por la altura de la ventana)
+        enemy_laser_distances = self.get_closest_n(self.alien_lasers, player_pos, n=5)
+        enemy_laser_distances_normalized = [
+            (dist / self.screen_height) * (1 if sprite.rect.center[0] > player_pos[0] else -1)
+            for sprite, dist in zip(self.alien_lasers.sprites(), enemy_laser_distances)
+        ]
+        
+        # 5. Dirección del enemigo: -0.5 para mover a la izquierda, +0.5 para mover a la derecha
+        enemy_direction = 0.5 if any(sprite.rect.center[0] > self.screen_width // 2 for sprite in self.aliens.sprites()) else -0.5
+        
+        # Crear un diccionario con las 5 observaciones
         game_state = {
-            'player_position': player_pos,
-            'alien_positions': alien_positions,
-            'alien_distances': alien_distances,
-            'laser_positions': laser_positions,
-            'laser_distances': laser_distances,
-            'obstacle_positions': obstacle_positions,
-            'obstacle_distances': obstacle_distances
+            'player_position': player_x_normalized,  # Posición normalizada del jugador
+            'alien_distances': alien_distances_normalized,  # Distancias relativas de los enemigos
+            'enemy_laser_distances': enemy_laser_distances_normalized,  # Distancias relativas de los láseres enemigos
+            'enemy_direction': enemy_direction  # Dirección de los enemigos
         }
-
+        
         return game_state
 
 # Parámetros del algoritmo genético
