@@ -41,7 +41,7 @@ class PlayerGame:
         self.player = pygame.sprite.GroupSingle(player_sprite)
 
         # Health and score setup
-        self.lives = 2
+        self.lives = 3
         self.score = 0
         self.font = pygame.font.Font('../font/Pixeled.ttf', 20)
 
@@ -56,7 +56,7 @@ class PlayerGame:
         # Alien setup
         self.aliens = pygame.sprite.Group()
         self.alien_lasers = pygame.sprite.Group()
-        self.alien_setup(rows=6, cols=8)
+        self.alien_setup(rows=6, cols=12)
         self.alien_direction = 1
 
         # Extra setup
@@ -70,7 +70,7 @@ class PlayerGame:
 
         # Configuración de temporizador para disparos de aliens
         self.ALIENLASER_EVENT = pygame.USEREVENT + 1
-        pygame.time.set_timer(self.ALIENLASER_EVENT, 600)  # Cada 600 ms
+        pygame.time.set_timer(self.ALIENLASER_EVENT, 300)  # Cada 300 ms
 
         # Límite de tiempo para cada jugador
         self.time_limit = 45  # Límite de tiempo en segundos
@@ -154,12 +154,10 @@ class PlayerGame:
                 if aliens_hit:
                     for alien in aliens_hit:
                         self.score += alien.value
-                        logging.info(f'Player {self.player_id} destroyed an alien. Current score: {self.score}')
                     laser.kill()
 
                 if pygame.sprite.spritecollide(laser, self.extra, True):
                     self.score += 500
-                    logging.info(f'Player {self.player_id} destroyed an extra alien. Current score: {self.score}')
                     laser.kill()
 
         if self.alien_lasers:
@@ -170,7 +168,6 @@ class PlayerGame:
                 if pygame.sprite.spritecollide(laser, self.player, False):
                     laser.kill()
                     self.lives -= 1
-                    logging.info(f'Player {self.player_id} was hit. Remaining lives: {self.lives}')
 
         for alien in self.aliens:
             if pygame.sprite.spritecollide(alien, self.blocks, True):
@@ -178,7 +175,6 @@ class PlayerGame:
 
             if pygame.sprite.spritecollide(alien, self.player, False):
                 self.lives = 0
-                logging.info(f'Player {self.player_id} collided with an alien and lost all lives.')
 
     def display_lives(self):
         for live in range(self.lives - 1):
@@ -210,17 +206,6 @@ class PlayerGame:
 
         self.run()
 
-        # Verificar si el jugador está tocando los bordes de la pantalla
-        if self.player.sprite.rect.left <= 0:
-            logging.info(f'Player {self.player_id} hit the left border.')
-            # Aquí puedes añadir lógica adicional, como restar una vida o penalizar de otra forma
-            self.lives -= 1
-        elif self.player.sprite.rect.right >= self.screen_width:
-            logging.info(f'Player {self.player_id} hit the right border.')
-            # Aquí también puedes añadir lógica adicional, como restar una vida
-            self.lives -= 1
-
-
         # Calcular recompensa
         done = self.lives <= 0  # Indica si el juego terminó
         state = self.get_game_state()
@@ -234,7 +219,6 @@ class PlayerGame:
         #ARREGLAR PARA MULTIPLES PLAYER
         if elapsed_time >= self.time_limit:
             done = True  # Indica que el juego ha terminado
-        print('Enemigos restante: ', len(self.aliens))
         if(40>len(self.aliens) ):
             done = True
         
@@ -245,22 +229,28 @@ class PlayerGame:
         reward = 0
 
         if action == 3:
-            reward += 5
-
+            reward += 2
+        
         # Recompensa por destruir un enemigo (basado en incremento de puntaje)
         current_score = self.score
         if current_score > self.last_score:
             reward += (current_score - self.last_score)  # Ajusta el multiplicador según sea necesario
-            logging.info(f'Player {self.player_id} scored points. Reward: {reward}')
+            print(reward)
             self.last_score = current_score
 
         if self.lives < self.last_lives:
             reward -= 300  # Ajusta la penalización si se pierde una vida
-            logging.info(f'Player {self.player_id} lost a life. Penalty: -200')
             self.last_lives = self.lives
 
-        if(40>len(self.aliens) ):
-            reward += 1000
+        # Recompensa por acercarse a un enemigo
+        closest_enemy, enemy_distance = self.get_closest(self.aliens, self.player.sprite.rect.center)
+        if closest_enemy and enemy_distance < 50:  # Ajusta el rango según lo que consideres seguro
+            reward += 5  # Aumenta la recompensa por acercarse a un enemigo dentro de un rango seguro
+
+        # Penalización por acercarse a un disparo
+        closest_laser, laser_distance = self.get_closest(self.alien_lasers, self.player.sprite.rect.center)
+        if closest_laser and laser_distance < 50:  # Penaliza si el jugador está muy cerca de un disparo
+            reward -= 5
 
         return reward
     
@@ -314,24 +304,88 @@ class PlayerGame:
         
         return closest_sprite, min_distance
 
+    def get_n_closest(self, sprite_group, position, n=5):
+        sprites_with_distance = []
+
+        # Calcular la distancia de cada sprite y almacenarla en una lista
+        for sprite in sprite_group.sprites():
+            distance = np.linalg.norm(np.array(sprite.rect.center) - np.array(position))
+            sprites_with_distance.append((sprite, distance))
+
+        # Ordenar los sprites por distancia y obtener los n más cercanos
+        sorted_sprites = sorted(sprites_with_distance, key=lambda x: x[1])[:n]
+
+        # Separar los sprites y las distancias
+        closest_sprites = [sprite for sprite, _ in sorted_sprites]
+        distances = [distance for _, distance in sorted_sprites]
+
+        return closest_sprites, distances
+
     def get_game_state(self):
         player_pos = self.player.sprite.rect.center
+        player_velocity = self.player.sprite.velocity if hasattr(self.player.sprite, 'velocity') else (0, 0)
 
-        # Alien más cercano
-        closest_alien, alien_distance = self.get_closest(self.aliens, player_pos)
+         # Distancias a los bordes del juego
+        distance_to_left_edge = player_pos[0]  # Distancia al borde izquierdo
+        distance_to_right_edge = self.screen_width - player_pos[0]  # Distancia al borde derecho
 
-        # Láser de alien más cercano
-        closest_alien_laser, laser_distance = self.get_closest(self.alien_lasers, player_pos)
+        # Borde izquierdo y derecho del jugador
+        player_top_edge = self.player.sprite.rect.top
+        player_left_edge = self.player.sprite.rect.left
+        player_right_edge = self.player.sprite.rect.right
 
-        # Obstacle más cercano
-        closest_obstacle, obstacle_distance = self.get_closest(self.blocks, player_pos)
+        # Obtener los 5 alienígenas más cercanos
+        closest_aliens, alien_distances = self.get_n_closest(self.aliens, player_pos, n=5)
+        alien_data = []
+        for alien, distance in zip(closest_aliens, alien_distances):
+            relative_x = alien.rect.center[0] - player_pos[0]
+            alien_velocity_x = alien.velocity[0] if hasattr(alien, 'velocity') else 0
+            alien_velocity_y = alien.velocity[1] if hasattr(alien, 'velocity') else 0
+            alien_data.extend([
+                alien.rect.center[0], alien.rect.center[1], distance, relative_x,
+                alien_velocity_x, alien_velocity_y
+            ])
+        
+        # Rellenar con valores por defecto si no hay suficientes alienígenas
+        while len(alien_data) < 5 * 6:  # 5 alienígenas, con 6 atributos cada uno
+            alien_data.extend([-1, -1, -1, -1, 0, 0])
 
-        # Crear un diccionario con el estado
+        # Obtener los 5 láseres de alien más cercanos
+        closest_alien_lasers, laser_distances = self.get_n_closest(self.alien_lasers, player_pos, n=5)
+
+        for laser in closest_alien_lasers:
+            laser.set_closest_status(True)
+
+        for laser in self.alien_lasers:
+            if laser not in closest_alien_lasers:
+                laser.set_closest_status(False)
+
+        laser_data = []
+        for laser, distance in zip(closest_alien_lasers, laser_distances):
+            relative_x = laser.rect.center[0] - player_pos[0]
+            laser_velocity_x = laser.velocity[0] if hasattr(laser, 'velocity') else 0
+            laser_velocity_y = laser.velocity[1] if hasattr(laser, 'velocity') else 0
+            laser_data.extend([
+                laser.rect.center[0], laser.rect.center[1], distance, relative_x,
+                laser_velocity_x, laser_velocity_y
+            ])
+        
+        # Rellenar con valores por defecto si no hay suficientes láseres
+        while len(laser_data) < 5 * 6:  # 5 láseres, con 6 atributos cada uno
+            laser_data.extend([-1, -1, -1, -1, 0, 0])
+
+        # Velocidad del jugador
+        player_velocity_x = player_velocity[0]
+        player_velocity_y = player_velocity[1]
+
+        # Crear el estado del juego como un vector
         game_state = [
-            player_pos[0], player_pos[1],
-            closest_alien.rect.center[0] if closest_alien else -1, closest_alien.rect.center[1] if closest_alien else -1, alien_distance,
-            closest_alien_laser.rect.center[0] if closest_alien_laser else -1, closest_alien_laser.rect.center[1] if closest_alien_laser else -1, laser_distance,
-            closest_obstacle.rect.center[0] if closest_obstacle else -1, #closest_obstacle.rect.center[1] if closest_obstacle else -1, obstacle_distance
+            player_pos[0], player_pos[1],  # Posición del jugador
+            player_velocity_x, player_velocity_y,  # Velocidad del jugador
+            player_left_edge, player_right_edge, player_top_edge,
+            distance_to_left_edge, distance_to_right_edge,  # Distancia a los bordes izquierdo y derecho
+            *alien_data,  # Datos de los 5 alienígenas más cercanos (incluye posición relativa en x)
+            *laser_data,  # Datos de los 5 láseres más cercanos (incluye posición relativa en x)
         ]
 
         return game_state
@@ -383,32 +437,29 @@ class GeneticAlgorithm:
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
         self.models = [self._build_model(input_size, hidden_size, output_size) for _ in range(population_size)]
+        self.generation = 0
 
     def _build_model(self, input_size, hidden_size, output_size):
-        #model = tf.keras.models.Sequential([
-        #    tf.keras.layers.InputLayer(input_shape=(input_size,)),
-        ##    tf.keras.layers.Dense(hidden_size, activation='relu'),
-        #   tf.keras.layers.Dense(output_size, activation='softmax')
-        #])
-        #model = tf.keras.models.Sequential([
-        #    tf.keras.layers.Dense(64, activation='relu', input_shape=(input_size,)),
-        #    tf.keras.layers.Dense(32, activation='relu'),
-        #    tf.keras.layers.Dense(output_size, activation='softmax')
-        #])
+
         model = Sequential([
-            Dense(64, activation='relu', kernel_initializer='he_uniform', input_dim=9),
+            Dense(128, activation='swish', kernel_initializer='he_uniform', input_dim=input_size),
             BatchNormalization(),
             Dropout(0.3),
-            Dense(32, activation='relu', kernel_regularizer=l2(0.01)),
+            Dense(64, activation='leaky_relu', kernel_regularizer=l2(0.01)),
             BatchNormalization(),
             Dropout(0.3),
-            Dense(16, activation='relu', kernel_regularizer=l2(0.01)),
-            Dense(4, activation='softmax')
+            Dense(32, activation='swish', kernel_regularizer=l2(0.01)),
+            Dense(output_size, activation='softmax')
         ])
+
 
         optimizer = Adam(learning_rate=0.001)
 
         model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+
+        if(False):
+            model.load_weights('./best_model_weights_gen_8.h5')  
+
         return model
 
     def select_parents(self, fitness_scores):
@@ -441,13 +492,16 @@ class GeneticAlgorithm:
         parent2_weights = parent2.get_weights()
         child_weights = []
 
+        # Usar crossover ponderado o uniforme
         for w1, w2 in zip(parent1_weights, parent2_weights):
-            # Realizar el crossover ponderado de los pesos basándose en el puntaje de los padres
-            if((fitness1 + fitness2)>0):
-                alpha = fitness1 / (fitness1 + fitness2)
+            if random.random() < 0.5:
+                # Crossover ponderado
+                alpha = fitness1 / (fitness1 + fitness2) if (fitness1 + fitness2) > 0 else 0.5
+                child_weight = alpha * w1 + (1 - alpha) * w2
             else:
-                alpha = 0.5
-            child_weight = alpha * w1 + (1 - alpha) * w2
+                # Crossover uniforme
+                mask = np.random.rand(*w1.shape) < 0.5
+                child_weight = np.where(mask, w1, w2)
             child_weights.append(child_weight)
 
         # Crear el modelo hijo con los pesos combinados
@@ -474,30 +528,47 @@ class GeneticAlgorithm:
             new_population.append(child)
         self.models = new_population[:self.population_size]
         logging.info(f'Generation evolved. Best fitness score: {max(fitness_scores)}')
+        self.generation += 1
+        self.export_best_model_weights(fitness_scores)
 
-    def get_action(self, model, state):
-        # Ejemplo de normalización de datos
-        state = (state - np.mean(state)) / (np.std(state) + 1e-8)
-        state = np.array(state).reshape(1, -1)
-        action_probs = model.predict(state)[0]
-        return np.argmax(action_probs)
+    def export_best_model_weights(self, fitness_scores):
+        # Get the index of the best model based on fitness scores
+        best_index = np.argmax(fitness_scores)
+        best_model = self.models[best_index]
+        # Save the weights to a file
+        best_model.save_weights(f'best_model_weights_gen_{self.generation}.h5')
+
+
+    def get_action(self, model, state, epsilon=0.1):
+        # Exploración vs. Explotación
+        if np.random.rand() < epsilon:
+            # Exploración: elige una acción aleatoria
+            return np.random.randint(0, model.output_shape[-1])
+        else:
+            # Explotación: elige la mejor acción predicha por el modelo
+            state = (state - np.mean(state)) / (np.std(state) + 1e-8)
+            state = np.array(state).reshape(1, -1)
+            action_probs = model.predict(state, verbose=0)[0]
+            return np.argmax(action_probs)
 
 def main():
-    pygame.init()
+    pygame.init()  # Inicializar Pygame una sola vez al principio
     screen_width = 800
     screen_height = 600
-    num_players = 4
+    num_players = 6
+    num_games = 1
+    num_gens = 30
     population_size = num_players
     mutation_rate = 0.1
     crossover_rate = 0.7
-    input_size = 9  # Example input size
+    input_size = 69
     hidden_size = 16
-    output_size = 4  # Number of possible actions
+    output_size = 4
+    clock = pygame.time.Clock()
+    clock.tick(240)
 
-    game = Game(screen_width, screen_height, num_players, render=True)
     genetic_algorithm = GeneticAlgorithm(population_size, mutation_rate, crossover_rate, input_size, hidden_size, output_size)
 
-    # Definir la función run_player antes de iniciar el bucle de generaciones
     def run_player(genetic_algorithm, player, player_id):
         state = player.get_game_state()
         total_reward = 0
@@ -506,34 +577,36 @@ def main():
         while not done:
             game.run()
             action = genetic_algorithm.get_action(genetic_algorithm.models[player_id], state)
-            print(action)
             state, reward, done = player.step(action)
-            print(state)
             total_reward += reward
-            if reward > 0:
-                logging.info(f'Player {player_id} received reward. Total reward: {total_reward}')
         
         player.reset()
         return total_reward
-    
-    for generation in range(30):
+
+    for generation in range(num_gens):
         logging.info(f'Starting generation {generation + 1}')
         fitness_scores = []
-    
-        with ThreadPoolExecutor() as executor:
-            # Ejecutar a todos los jugadores en paralelo
-            futures = [executor.submit(run_player, genetic_algorithm, player, i) for i, player in enumerate(game.players)]
-            
-            # Recopilar los resultados a medida que se completan
-            for future in as_completed(futures):
-                fitness_scores.append(future.result())
-    
+
+        for ig in range(num_games):
+            pygame.init()
+            game = Game(screen_width, screen_height, num_players, render=True)
+            for ip, player in enumerate(game.players):
+                fitness_scores.append(run_player(genetic_algorithm, player, ig))
+                print(fitness_scores)
+            #with ThreadPoolExecutor() as executor:
+            #    futures = [executor.submit(run_player, genetic_algorithm, player, i) for i, player in enumerate(game.players)]
+            #    for future in as_completed(futures):
+            #        fitness_scores.append(future.result())
+
+            game.reset()  # Limpiar los recursos del juego después de cada ciclo
+            # Finalizar Pygame una sola vez al final
+            pygame.quit() 
+
         logging.info(f'Fitness scores for generation {generation + 1}: {fitness_scores}')
-    
-        # Evolucionar los modelos basados en las puntuaciones de fitness
         genetic_algorithm.evolve(fitness_scores)
-        game.reset()
+
    
 
 if __name__ == "__main__":
     main()
+
