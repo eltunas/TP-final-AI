@@ -8,7 +8,7 @@ import numpy as np
 import time
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization, Input
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.regularizers import l2
 
@@ -78,10 +78,10 @@ class PlayerGame:
             self.time_limit = 15  # Límite de tiempo en segundos
         elif (generation > 20 and generation <= 40):
             # Límite de tiempo para cada jugador
-            self.time_limit = 30  # Límite de tiempo en segundos
+            self.time_limit = 45  # Límite de tiempo en segundos
         else:
             # Límite de tiempo para cada jugador
-            self.time_limit = 45  # Límite de tiempo en segundos
+            self.time_limit = 120  # Límite de tiempo en segundos
 
         self.start_time = time.time()  # Guarda el tiempo de inicio
 
@@ -263,12 +263,12 @@ class PlayerGame:
         # Recompensa por destruir un enemigo (basado en incremento de puntaje)
         current_score = self.score
         if current_score > self.last_score:
-            reward += (current_score - self.last_score) * 10  # Aumenta el valor por enemigo destruido
+            reward += (current_score - self.last_score) * 2 # Aumenta el valor por enemigo destruido
             self.last_score = current_score
 
         # Penalización significativa por perder una vida
         if self.lives < self.last_lives:
-            reward -= 300
+            reward -= 1000
             self.last_lives = self.lives
 
         # Recompensa por acercarse a un enemigo (fomentar la agresividad)
@@ -283,9 +283,9 @@ class PlayerGame:
         closest_laser, laser_distance = self.get_closest(self.alien_lasers, self.player.sprite.rect.center)
         if closest_laser:
             if laser_distance < 30:  # Penalización máxima si el láser está muy cerca
-                reward -= 20
+                reward -= 5
             elif laser_distance < 50:
-                reward -= 10  # Penalización menor si está un poco más lejos
+                reward -= 2  # Penalización menor si está un poco más lejos
 
         # Penalización por quedarse en el centro si no hay enemigos alineados en el eje x
         aligned_enemy = any(
@@ -293,13 +293,13 @@ class PlayerGame:
             for alien in self.aliens
         )
         if not aligned_enemy:
-            reward -= 5  # Penalización si no hay enemigos alineados en x
+            reward -= 2  # Penalización si no hay enemigos alineados en x
 
         # Verificar si el jugador está tocando los bordes de la pantalla
         if self.player.sprite.rect.left <= 0:
-            reward -= 5  # Penalización por tocar el borde izquierdo
+            reward -= 3  # Penalización por tocar el borde izquierdo
         elif self.player.sprite.rect.right >= self.screen_width:
-            reward -= 5  # Penalización por tocar el borde derecho
+            reward -= 3  # Penalización por tocar el borde derecho
 
         # Recompensa adicional por mantenerse en movimiento (incentivo para evitar quedarse quieto)
         if action in [1, 2]:  # 1 = Mover derecha, 2 = Mover izquierda
@@ -509,7 +509,8 @@ class GeneticAlgorithm:
     def _build_model(self, input_size, hidden_size, output_size):
 
         model = Sequential([
-            Dense(128, activation='swish', kernel_initializer='he_uniform', input_dim=input_size),
+            Input(shape=(input_size,)),  # Explicitly define the input shape
+            Dense(128, activation='swish', kernel_initializer='he_uniform'),
             BatchNormalization(),
             Dropout(0.3),
             Dense(64, activation='leaky_relu', kernel_regularizer=l2(0.01)),
