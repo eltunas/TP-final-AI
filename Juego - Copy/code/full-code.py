@@ -56,7 +56,7 @@ class PlayerGame:
         # Alien setup
         self.aliens = pygame.sprite.Group()
         self.alien_lasers = pygame.sprite.Group()
-        self.alien_setup(rows=3, cols=6)
+        self.alien_setup(rows=6, cols=8)
         self.alien_direction = 1
 
         # Extra setup
@@ -71,7 +71,7 @@ class PlayerGame:
 
         # Configuración de temporizador para disparos de aliens
         self.ALIENLASER_EVENT = pygame.USEREVENT + 1
-        pygame.time.set_timer(self.ALIENLASER_EVENT, 100)  # Cada 100 ms
+        pygame.time.set_timer(self.ALIENLASER_EVENT, 600)  # Cada 600 ms
 
         if (generation <= 20):
             # Límite de tiempo para cada jugador
@@ -160,7 +160,7 @@ class PlayerGame:
     def alien_shoot(self):
         if self.aliens:
             random_alien = choice(self.aliens.sprites())
-            laser_sprite = Laser(random_alien.rect.center, 6, self.screen_height)
+            laser_sprite = Laser(random_alien.rect.center, 3, self.screen_height)
             self.alien_lasers.add(laser_sprite)
 
     def extra_alien_timer(self):
@@ -246,7 +246,7 @@ class PlayerGame:
         if elapsed_time >= self.time_limit:
             done = True  # Indica que el juego ha terminado
 
-        if(10> len(self.aliens)):
+        if(0 == len(self.aliens)):
             done = True
 
         
@@ -305,6 +305,11 @@ class PlayerGame:
         if action in [1, 2]:  # 1 = Mover derecha, 2 = Mover izquierda
             reward += 1  # Recompensa pequeña para incentivar el movimiento
 
+        if(len(self.aliens) <= 10):
+            reward += 1000
+        elif (len(self.aliens) == 0):
+            reward += 40000
+
         return reward
     
     def render_game(self):
@@ -337,7 +342,7 @@ class PlayerGame:
         # Alien setup
         self.aliens = pygame.sprite.Group()
         self.alien_lasers = pygame.sprite.Group()
-        self.alien_setup(rows=3, cols=6)
+        self.alien_setup(rows=6, cols=8)
         self.alien_direction = 1
 
         self.kills = 0
@@ -495,12 +500,14 @@ class Game:
             player_game.reset()
 
 class GeneticAlgorithm:
-    def __init__(self, population_size, mutation_rate, crossover_rate, input_size, hidden_size, output_size):
+    def __init__(self, population_size, mutation_rate, crossover_rate, input_size, hidden_size, output_size, crossover_method='uniform', elitism_rate=0.1):
         self.population_size = population_size
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
         self.loadModel = False
         self.modelLoaded = False
+        self.crossover_method = crossover_method 
+        self.elitism_rate = elitism_rate 
         self.modelToLoadPath = './best_model_weights_gen_40.h5'
         self.models = [self._build_model(input_size, hidden_size, output_size) for _ in range(population_size)]
         self.generation = 0
@@ -520,24 +527,24 @@ class GeneticAlgorithm:
             Dense(output_size, activation='softmax')
         ])
 
-
-        optimizer = Adam(learning_rate=0.001)
-
         if(self.loadModel and not self.modelLoaded):
             model.load_weights(self.modelToLoadPath)
             self.modelLoaded = True  
 
-        model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+        model.compile(loss='categorical_crossentropy', metrics=['accuracy'])
 
         return model
 
-    def select_parents(self, fitness_scores):
-        total_fitness = sum(fitness_scores)
-        if(total_fitness == 0):
-            total_fitness = 0.0001
-        selection_probs = [score / total_fitness for score in fitness_scores]
-        parents = random.choices(self.models, weights=selection_probs, k=2)
-        return parents
+    def select_parents(self, fitness_scores, tournament_size=4):
+        # Realizar selección por torneo para obtener dos padres
+        selected_indices = random.sample(range(self.population_size), tournament_size)
+        selected_indices.sort(key=lambda idx: fitness_scores[idx], reverse=True)
+        
+        # Los dos mejores del torneo
+        parent1_index = selected_indices[0]
+        parent2_index = selected_indices[1]
+
+        return self.models[parent1_index], self.models[parent2_index]
 
     def crossoverOld(self, parent1, parent2, fitness1, fitness2):
         total_fitness = fitness1 + fitness2
@@ -561,19 +568,28 @@ class GeneticAlgorithm:
         parent2_weights = parent2.get_weights()
         child_weights = []
 
-        # Usar crossover ponderado o uniforme
-        for w1, w2 in zip(parent1_weights, parent2_weights):
-            # Crossover ponderado
+        if self.crossover_method == 'uniform':
+            # Crossover uniforme
+            for w1, w2 in zip(parent1_weights, parent2_weights):
+                mask = np.random.randint(0, 2, size=w1.shape).astype(bool)
+                child_weight = np.where(mask, w1, w2)
+                child_weights.append(child_weight)
+        elif self.crossover_method == 'point':
+            # Crossover por puntos
+            crossover_point = random.randint(1, len(parent1_weights) - 1)
+            child_weights = parent1_weights[:crossover_point] + parent2_weights[crossover_point:]
+        else:
+            # Crossover ponderado (por defecto)
             alpha = fitness1 / (fitness1 + fitness2) if (fitness1 + fitness2) > 0 else 0.5
-            child_weight = alpha * w1 + (1 - alpha) * w2
-            child_weights.append(child_weight)
+            for w1, w2 in zip(parent1_weights, parent2_weights):
+                child_weight = alpha * w1 + (1 - alpha) * w2
+                child_weights.append(child_weight)
 
         # Crear el modelo hijo con los pesos combinados
         child = tf.keras.models.clone_model(parent1)
         child.set_weights(child_weights)
 
         return child
-
 
     def mutate(self, model):
         weights = model.get_weights()
@@ -583,6 +599,17 @@ class GeneticAlgorithm:
         model.set_weights(weights)
 
     def evolve(self, fitness_scores):
+        
+        # Ordenar modelos y puntajes de fitness
+        #sorted_indices = np.argsort(fitness_scores)[::-1]  # Orden descendente
+        #sorted_models = [self.models[i] for i in sorted_indices]
+        #sorted_fitness_scores = [fitness_scores[i] for i in sorted_indices]
+
+        # Elitismo: conservar los mejores individuos
+        #elite_count = int(self.elitism_rate * self.population_size)
+        #new_population = sorted_models[:elite_count].copy()
+
+
         new_population = []
         while len(new_population) < self.population_size:
             parent1, parent2 = self.select_parents(fitness_scores)
@@ -591,7 +618,9 @@ class GeneticAlgorithm:
             self.mutate(child)
             new_population.append(child)
         self.models = new_population[:self.population_size]
-        logging.info(f'Generation evolved. Best fitness score: {max(fitness_scores)}')
+        average_fitness_score = sum(fitness_scores) / len(fitness_scores) if fitness_scores else 0
+        logging.info(f'Generation evolved. Best fitness score: {max(fitness_scores)}, Average fitness score: {average_fitness_score}')
+        self.generation += 1
         self.generation += 1
         self.export_best_model_weights(fitness_scores)
 
@@ -629,7 +658,10 @@ def main():
     num_threads = 4  # Número de threads para el executor
     runSync = False
 
-    genetic_algorithm = GeneticAlgorithm(num_games, mutation_rate, crossover_rate, input_size, hidden_size, output_size)
+    crossover_method='ponderados'
+    elitism_rate=0.1
+
+    genetic_algorithm = GeneticAlgorithm(num_games, mutation_rate, crossover_rate, input_size, hidden_size, output_size, crossover_method, elitism_rate)
 
     # Función para ejecutar cada juego individual con un jugador
     def run_single_game(genetic_algorithm, player_id, generation):
