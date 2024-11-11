@@ -271,24 +271,24 @@ class PlayerGame:
 
         # Penalización significativa por perder una vida
         if self.lives < self.last_lives:
-            reward -= 1000
+            reward -= 10000
             self.last_lives = self.lives
 
         # Recompensa por acercarse a un enemigo (fomentar la agresividad)
-        closest_enemy, enemy_distance = self.get_closest(self.aliens, self.player.sprite.rect.center)
-        if closest_enemy:
-            if enemy_distance < 50:
-                reward += 5  # Recompensa extra por estar muy cerca de un enemigo
-            elif enemy_distance < 100:
-                reward += 2  # Recompensa por acercarse, aunque esté más lejos
+        #closest_enemy, enemy_distance = self.get_closest(self.aliens, self.player.sprite.rect.center)
+        #if closest_enemy:
+        #    if enemy_distance < 50:
+        #        reward += 5  # Recompensa extra por estar muy cerca de un enemigo
+        #    elif enemy_distance < 100:
+        #        reward += 2  # Recompensa por acercarse, aunque esté más lejos
 
         # Penalización fuerte por acercarse demasiado a un disparo
         closest_laser, laser_distance = self.get_closest(self.alien_lasers, self.player.sprite.rect.center)
         if closest_laser:
             if laser_distance < 30:  # Penalización máxima si el láser está muy cerca
-                reward -= 5
+                reward -= 50
             elif laser_distance < 50:
-                reward -= 2  # Penalización menor si está un poco más lejos
+                reward -= 20  # Penalización menor si está un poco más lejos
 
         # Penalización por quedarse en el centro si no hay enemigos alineados en el eje x
         aligned_enemy = any(
@@ -299,10 +299,10 @@ class PlayerGame:
             reward -= 2  # Penalización si no hay enemigos alineados en x
 
         # Verificar si el jugador está tocando los bordes de la pantalla
-        if self.player.sprite.rect.left <= 0:
-            reward -= 3  # Penalización por tocar el borde izquierdo
-        elif self.player.sprite.rect.right >= self.screen_width:
-            reward -= 3  # Penalización por tocar el borde derecho
+        if self.player.sprite.rect.left <= 20:
+            reward -= 30  # Penalización por tocar el borde izquierdo
+        elif self.player.sprite.rect.right >= self.screen_width - 20:
+            reward -= 30  # Penalización por tocar el borde derecho
 
         # Recompensa adicional por mantenerse en movimiento (incentivo para evitar quedarse quieto)
         if action in [1, 2]:  # 1 = Mover derecha, 2 = Mover izquierda
@@ -518,7 +518,7 @@ class GeneticAlgorithm:
         self.modelLoaded = False
         self.crossover_method = crossover_method 
         self.elitism_rate = elitism_rate 
-        self.modelToLoadPath = './best_model_weights_gen_40.h5'
+        self.modelToLoadPath = './best_model_weights_gen_112.weights.h5'
         self.models = [self._build_model(input_size, hidden_size, output_size) for _ in range(population_size)]
         self.generation = 0
      
@@ -601,11 +601,12 @@ class GeneticAlgorithm:
 
         return child
 
-    def mutate(self, model):
+    def mutate(self, model, decay_factor = 0.99):
         weights = model.get_weights()
+        factor = 0.1 * (decay_factor ** self.generation)
         for i in range(len(weights)):
             if random.random() < self.mutation_rate:
-                weights[i] += np.random.normal(0, 0.1, size=weights[i].shape)
+                weights[i] += np.random.normal(0, factor, size=weights[i].shape)
         model.set_weights(weights)
 
     def evolve(self, fitness_scores):
@@ -643,7 +644,7 @@ class GeneticAlgorithm:
 
     def get_action(self, model, state, epsilon=0.1):
         # Exploración vs. Explotación
-        if np.random.rand() < (epsilon / self.generation):
+        if np.random.rand() < (epsilon / (self.generation + 1)):
             # Exploración: elige una acción aleatoria
             return np.random.randint(0, model.output_shape[-1])
         else:
@@ -665,7 +666,7 @@ def main():
     hidden_size = 16
     output_size = 4
     num_threads = 4  # Número de threads para el executor
-    runSync = False
+    runSync = True
 
     crossover_method='ponderados'
     elitism_rate=0.1
