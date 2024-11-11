@@ -499,9 +499,9 @@ class GeneticAlgorithm:
         self.population_size = population_size
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
-        self.loadModel = True
+        self.loadModel = False
         self.modelLoaded = False
-        self.modelToLoadPath = './best_model_weights_gen_50.h5'
+        self.modelToLoadPath = './best_model_weights_gen_40.h5'
         self.models = [self._build_model(input_size, hidden_size, output_size) for _ in range(population_size)]
         self.generation = 0
      
@@ -599,7 +599,7 @@ class GeneticAlgorithm:
         best_index = np.argmax(fitness_scores)
         best_model = self.models[best_index]
         # Save the weights to a file
-        best_model.save_weights(f'best_model_weights_gen_{self.generation}.h5')
+        best_model.save_weights(f'best_model_weights_gen_{self.generation}.weights.h5')
 
 
     def get_action(self, model, state, epsilon=0.1):
@@ -618,15 +618,15 @@ def main():
     pygame.init()  # Inicializar Pygame una sola vez al principio
     screen_width = 800
     screen_height = 600
-    num_games = 1  # Número de juegos (1 jugador por juego)
-    num_gens = 1
+    num_games = 16  # Número de juegos (1 jugador por juego)
+    num_gens = 100
     mutation_rate = 0.1
     crossover_rate = 0.7
     input_size = 28
     hidden_size = 16
     output_size = 4
     num_threads = 4  # Número de threads para el executor
-    runSync = True
+    runSync = False
 
     genetic_algorithm = GeneticAlgorithm(num_games, mutation_rate, crossover_rate, input_size, hidden_size, output_size)
 
@@ -672,7 +672,7 @@ def main():
     pygame.quit()
 
    
-#os.environ["SDL_VIDEODRIVER"] = "dummy"
+os.environ["SDL_VIDEODRIVER"] = "dummy"
 if __name__ == "__main__":
     main()
 
