@@ -68,17 +68,20 @@ class PlayerGame:
         self.last_lives = 3
         self.initial_lives = 3
         self.kills = 0
+        self.reach15 = False
+        self.reach10 = False
+        self.reach5 = False
 
         # Configuración de temporizador para disparos de aliens
         self.ALIENLASER_EVENT = pygame.USEREVENT + 1
         pygame.time.set_timer(self.ALIENLASER_EVENT, 600)  # Cada 600 ms
 
-        if (generation <= 20):
+        if (generation <= 15):
             # Límite de tiempo para cada jugador
-            self.time_limit = 15  # Límite de tiempo en segundos
-        elif (generation > 20 and generation <= 40):
+            self.time_limit = 30  # Límite de tiempo en segundos
+        elif (generation > 15 and generation <= 30):
             # Límite de tiempo para cada jugador
-            self.time_limit = 45  # Límite de tiempo en segundos
+            self.time_limit = 60  # Límite de tiempo en segundos
         else:
             # Límite de tiempo para cada jugador
             self.time_limit = 120  # Límite de tiempo en segundos
@@ -305,10 +308,17 @@ class PlayerGame:
         if action in [1, 2]:  # 1 = Mover derecha, 2 = Mover izquierda
             reward += 1  # Recompensa pequeña para incentivar el movimiento
 
-        if(len(self.aliens) <= 10):
-            reward += 1000
-        elif (len(self.aliens) == 0):
-            reward += 40000
+        if(len(self.aliens) <= 15 and not self.reach15):
+            self.reach15 = True
+            reward += 100000
+
+        if(len(self.aliens) <= 10 and not self.reach10):
+            self.reach10 = True
+            reward += 500000
+
+        if(len(self.aliens) <= 5 and not self.reach5):
+            self.reach5 = True
+            reward += 1000000
 
         return reward
     
@@ -621,7 +631,6 @@ class GeneticAlgorithm:
         average_fitness_score = sum(fitness_scores) / len(fitness_scores) if fitness_scores else 0
         logging.info(f'Generation evolved. Best fitness score: {max(fitness_scores)}, Average fitness score: {average_fitness_score}')
         self.generation += 1
-        self.generation += 1
         self.export_best_model_weights(fitness_scores)
 
     def export_best_model_weights(self, fitness_scores):
@@ -634,7 +643,7 @@ class GeneticAlgorithm:
 
     def get_action(self, model, state, epsilon=0.1):
         # Exploración vs. Explotación
-        if np.random.rand() < epsilon:
+        if np.random.rand() < (epsilon / self.generation):
             # Exploración: elige una acción aleatoria
             return np.random.randint(0, model.output_shape[-1])
         else:
