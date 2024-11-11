@@ -8,6 +8,11 @@ from main import Game
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.regularizers import l2
+
 
 class GeneticAlgorithm:
     def __init__(self, population_size, mutation_rate, num_generations, input_size, output_size):
@@ -16,26 +21,42 @@ class GeneticAlgorithm:
         self.num_generations = num_generations
         self.input_size = input_size
         self.output_size = output_size
+        self.loadModel = False
+        self.modelLoaded = False
+        self.modelToLoadPath = './best_model_weights_gen_205.weights.h5'
         self.population = self.initialize_population()
         self.level = 2
         self.win_count = 0
         self.generation = 0 
 
+
+        # Listas para almacenar el progreso de cada generación
+        self.best_scores = []
+        self.best_total_scores = []
+        self.best_epsilons = []
+
     def build_model(self):
-        model = tf.keras.Sequential([
-            tf.keras.layers.InputLayer(input_shape=(self.input_size,)),
-            tf.keras.layers.Normalization(axis=-1),
-            # Cambiar las capas ocultas a 100 neuronas
-            tf.keras.layers.Dense(100, activation='swish', kernel_initializer='he_normal'),
-            tf.keras.layers.Dense(100, activation='leaky_relu', kernel_initializer='he_normal'),
-            tf.keras.layers.Dense(100, activation='swish', kernel_initializer='he_normal'),
-            # Capa de salida con softmax para las probabilidades de las acciones
-            tf.keras.layers.Dense(self.output_size, activation='softmax')
+        model = Sequential([
+            Dense(128, activation='swish', kernel_initializer='he_uniform', input_dim=self.input_size),
+            BatchNormalization(),
+            Dropout(0.3),
+            Dense(64, activation='leaky_relu', kernel_regularizer=l2(0.01)),
+            BatchNormalization(),
+            Dropout(0.3),
+            Dense(32, activation='swish', kernel_regularizer=l2(0.01)),
+            Dense(self.output_size, activation='softmax')
         ])
 
-        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-6), 
-                      loss='mean_squared_error')  # Usamos MSE para Deep Q-Learning
+
+        optimizer = Adam(learning_rate=0.001)  
+
+        model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+
+        if self.loadModel:
+            model = tf.keras.models.load_model('best_model_gen_200.keras')
+
         return model
+
 
     def initialize_population(self):
         """Inicializa una población de redes con pesos aleatorios."""
@@ -69,14 +90,14 @@ class GeneticAlgorithm:
         elif self.level == 2:
             shoot = True
             shoot_speed = 600
-            time_limit = 30
+            time_limit = 120
 
-            if generation > 50:
-                time_limit = 180
-            elif generation > 30:
-                time_limit = 120
-            elif generation>15:
-                time_limit=60
+            #if generation > 50:
+                #time_limit = 180
+            #elif generation > 30:
+                #time_limit = 120
+            #elif generation>15:
+                #time_limit=60
 
 
 
@@ -109,7 +130,7 @@ class GeneticAlgorithm:
             input_data = np.nan_to_num(input_data, nan=0, posinf=1e6, neginf=-1e6)
             input_data = np.expand_dims(input_data, axis=0)
 
-            epsilon = max(0.01, 1 - generation * 0.05) # Decaimiento de exploración
+            epsilon = max(0.01, 1 * (0.95 ** generation)) # Decaimiento de exploración
             
             action_probs = model.predict(input_data, verbose=0)[0]
 
@@ -136,8 +157,8 @@ class GeneticAlgorithm:
                     self.win_count = 0
                 done = True
 
-        print(total_score)
-        return total_score
+        print(f"Puntaje{game.score}, Fitness: {total_score}")
+        return total_score, game.score, epsilon
 
     def export_best_model(self, fitness_scores):
         # Get the index of the best model based on fitness scores
@@ -186,108 +207,79 @@ class GeneticAlgorithm:
         best_indices = np.argsort(fitness_scores)[-num_best:]
         return [self.population[i] for i in best_indices]
 
-    def crossover(self, parent1, parent2):
-        """Realiza cruce entre dos individuos utilizando punto de corte para mantener diversidad genética."""
-        child_model = self.build_model()  # Crea un nuevo modelo vacío
-        
-        for layer1, layer2, child_layer in zip(parent1.layers, parent2.layers, child_model.layers):
-            # Asegúrate de que las capas sean Dense (que tienen pesos)
-            if isinstance(layer1, tf.keras.layers.Dense) and isinstance(layer2, tf.keras.layers.Dense):
-                weights1, biases1 = layer1.get_weights()
-                weights2, biases2 = layer2.get_weights()
+    def crossover(self, parent1, parent2, fitness_scores):
+        """Realiza un cruce ponderado en función de la aptitud entre dos padres para generar un hijo."""
+        fitness1 = np.argsort(fitness_scores)[-1]
+        fitness2 = np.argsort(fitness_scores)[-2]
+        parent1_weights = parent1.get_weights()
+        parent2_weights = parent2.get_weights()
+        child_weights = []
 
-                mask = np.random.rand(*weights1.shape) > 0.5
-                new_weights = np.where(mask, weights1, weights2)
-                new_biases = np.where(mask[0], biases1, biases2)  # Máscara para sesgo también
+        # Usar crossover ponderado según la aptitud
+        for w1, w2 in zip(parent1_weights, parent2_weights):
+            # Calcular alpha ponderado
+            alpha = fitness1 / (fitness1 + fitness2) if (fitness1 + fitness2) > 0 else 0.5
+            # Realizar el cruce ponderado de los pesos
+            child_weight = alpha * w1 + (1 - alpha) * w2
+            child_weights.append(child_weight)
 
-                child_layer.set_weights([new_weights, new_biases])
-            # Si es una capa que no tiene pesos, simplemente la copiamos tal cual
-            else:
-                child_layer.set_weights(layer1.get_weights())
+        # Crear el modelo hijo con los pesos combinados
+        child = tf.keras.models.clone_model(parent1)
+        child.set_weights(child_weights)
 
-        return child_model
+        return child
 
-    def mutate(self, model, generation):
-        """Mutación aleatoria con mayor probabilidad de cambio en generaciones tempranas."""
-        for layer in model.layers:
-            # Para capas como Dense, que tienen pesos y sesgos
-            if isinstance(layer, tf.keras.layers.Dense):
-                weights, biases = layer.get_weights()
+    def mutate(self, model):
+        """Realiza una mutación en el modelo cambiando los pesos aleatoriamente."""
+        weights = model.get_weights()
+        for i in range(len(weights)):
+            if random.random() < self.mutation_rate:
+                # Se aplica una pequeña mutación normal a los pesos
+                weights[i] += np.random.normal(0, 0.1, size=weights[i].shape)
+        model.set_weights(weights)
 
-                # Aumentamos la perturbación en las primeras generaciones
-                mutation_scale = max(0.1, 1.0 / (generation + 1))  # Reduce la perturbación conforme aumentan las generaciones
-
-                # Si la mutación está habilitada, realizamos el cambio con la escala adaptativa
-                if np.random.rand() < self.mutation_rate:
-                    weights += np.random.normal(scale=mutation_scale, size=weights.shape)  # Perturbación para pesos
-                if np.random.rand() < self.mutation_rate:
-                    biases += np.random.normal(scale=mutation_scale, size=biases.shape)  # Perturbación para los sesgos
-
-                # Establecer los nuevos pesos y sesgos
-                layer.set_weights([weights, biases])
-
-            # Para capas de Normalización (como tf.keras.layers.Normalization)
-            elif isinstance(layer, tf.keras.layers.LayerNormalization):
-                # Las capas de normalización pueden tener más de dos valores, por ejemplo gamma y beta
-                weights = layer.get_weights()
-
-                # Verificar si se obtuvo gamma y beta (típicamente, se deben manejar como gamma y beta)
-                if len(weights) == 2:
-                    gamma, beta = weights
-                    # Aumentamos la perturbación en las primeras generaciones
-                    mutation_scale = max(0.1, 1.0 / (generation + 1))  # Reduce la perturbación conforme aumentan las generaciones
-
-                    # Si la mutación está habilitada, realizamos el cambio con la escala adaptativa
-                    if np.random.rand() < self.mutation_rate:
-                        gamma += np.random.normal(scale=mutation_scale, size=gamma.shape)  # Perturbación para gamma
-                    if np.random.rand() < self.mutation_rate:
-                        beta += np.random.normal(scale=mutation_scale, size=beta.shape)  # Perturbación para beta
-
-                    # Establecer los nuevos gamma y beta
-                    layer.set_weights([gamma, beta])
-                else:
-                    # Si la capa de normalización tiene más pesos, manejarlos de acuerdo a su estructura
-                    print(f"Advertencia: La capa de Normalization tiene {len(weights)} pesos, no se mutan.")
-                    
-            # Otros tipos de capas pueden ser manejados aquí si es necesario (por ejemplo, Dropout, BatchNormalization, etc.)
         return model
 
-    def create_new_generation(self, best_individuals, generation):
+    def create_new_generation(self, best_individuals, fitness_scores):
         """Crea una nueva generación usando los mejores individuos y aplicando cruce y mutación."""
         new_population = []
         while len(new_population) < self.population_size:
             parent1, parent2 = random.sample(best_individuals, 2)
-            child = self.crossover(parent1, parent2)
-            child = self.mutate(child, generation)
+            child = self.crossover(parent1, parent2, fitness_scores)
+            child = self.mutate(child)
             new_population.append(child)
         return new_population
 
     def evolve(self):
-        """Ejecuta el ciclo de evolución a través de varias generaciones."""
         for generation in range(self.num_generations):
-            print(f'Inciando generacion {generation}')
-
+            print(f'Iniciando generacion {generation}')
             game_instances = [Game(800, 600) for _ in range(self.population_size)]
-
             fitness_scores = []
-    
-                # Crea un ThreadPoolExecutor con tantos hilos como tamaño de la población
+            scores = []
+            epsilons = []
+
             with ThreadPoolExecutor(max_workers=self.population_size) as executor:
-                # Define una lista de tareas para cada modelo en la población, asociada a su instancia de juego
                 futures = [
                     executor.submit(self.evaluate_fitness, model, generation, game_instances[i], i)
                     for i, model in enumerate(self.population)
                 ]
-                
-                # Recolecta los resultados a medida que se completan las tareas
                 for future in as_completed(futures):
-                    fitness_scores.append(future.result())
+                    total_score, game_score, epsilon = future.result()
+                    fitness_scores.append(total_score)
+                    scores.append(game_score)
+                    epsilons.append(epsilon)
+
+            # Encuentra el índice del mejor puntaje en esta generación
+            best_index = np.argmax(fitness_scores)
+            self.best_scores.append(scores[best_index])
+            self.best_total_scores.append(fitness_scores[best_index])
+            self.best_epsilons.append(epsilons[best_index])
 
             print(f'Scores de la generación {generation}: {fitness_scores}')
             # Seleccionar los mejores individuos y generar la nueva población
             best_individuals = self.select_best_individuals(fitness_scores)
 
-            self.population = self.create_new_generation(best_individuals, generation)
+            self.population = self.create_new_generation(best_individuals, fitness_scores)
 
             self.export_best_model(fitness_scores)
             print(f"Generación {generation}: Mejor puntaje = {max(fitness_scores)}")
