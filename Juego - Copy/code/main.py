@@ -6,18 +6,26 @@ from random import choice, randint
 from laser import Laser
 import os
 import numpy as np
+import tensorflow as tf
+import time
 
 os.chdir(os.path.dirname(__file__))
 
 class Game:
-    def __init__(self, screen_width, screen_height):
+    def __init__(self, screen_width, screen_height, render=True):
 
-        
-        self.screen_width = screen_width  # Almacenar como atributo
-        self.screen_height = screen_height  # Almacenar como atributo
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.render = render  # Controla si se renderiza la ventana o no
+        self.time_limit = 20  # Límite de tiempo en segundos
+        self.start_time = time.time()  # Guarda el tiempo de inicio
 
-        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-        pygame.display.set_caption('Space Invaders')
+        # Inicializar la pantalla solo si render está habilitado
+        if self.render:
+            self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+            pygame.display.set_caption('Space Invaders')
+        else:
+            self.screen = None  # No se inicializa la pantalla si no se renderiz
 
         # Player setup
         player_sprite = Player((self.screen_width / 2, self.screen_height), self.screen_width, 5)
@@ -48,20 +56,13 @@ class Game:
         self.extra = pygame.sprite.GroupSingle()
         self.extra_spawn_time = randint(40, 80)
 
-        # Audio
-        music = pygame.mixer.Sound('../audio/music.wav')
-        music.set_volume(0.2)
-        music.play(loops=-1)
-        self.laser_sound = pygame.mixer.Sound('../audio/laser.wav')
-        self.laser_sound.set_volume(0.5)
-        self.explosion_sound = pygame.mixer.Sound('../audio/explosion.wav')
-        self.explosion_sound.set_volume(0.3)
-
         #For rewards
         self.last_score = 0
         self.last_lives = 3
         self.initial_lives = 3
 
+
+    
     def create_obstacle(self, x_start, y_start, offset_x):
         for row_index, row in enumerate(self.shape):
             for col_index, col in enumerate(row):
@@ -109,7 +110,6 @@ class Game:
             random_alien = choice(self.aliens.sprites())
             laser_sprite = Laser(random_alien.rect.center, 6, self.screen_height)
             self.alien_lasers.add(laser_sprite)
-            self.laser_sound.play()
 
     def extra_alien_timer(self):
         self.extra_spawn_time -= 1
@@ -128,7 +128,6 @@ class Game:
                     for alien in aliens_hit:
                         self.score += alien.value
                     laser.kill()
-                    self.explosion_sound.play()
 
                 if pygame.sprite.spritecollide(laser, self.extra, True):
                     self.score += 500
@@ -143,16 +142,15 @@ class Game:
                     laser.kill()
                     self.lives -= 1
                     if self.lives <= 0:
-                        pygame.quit()
-                        sys.exit()
+                        done = True
 
         if self.aliens:
             for alien in self.aliens:
                 pygame.sprite.spritecollide(alien, self.blocks, True)
 
                 if pygame.sprite.spritecollide(alien, self.player, False):
-                    pygame.quit()
-                    sys.exit()
+                    self.lives = 0
+                    done = True
 
     def display_lives(self):
         for live in range(self.lives - 1):
@@ -166,6 +164,7 @@ class Game:
 
     def victory_message(self):
         if not self.aliens.sprites():
+            done = True
             victory_surf = self.font.render('You won', False, 'white')
             victory_rect = victory_surf.get_rect(center=(self.screen_width / 2, self.screen_height / 2))
             self.screen.blit(victory_surf, victory_rect)
@@ -191,7 +190,7 @@ class Game:
         self.display_score()
         self.victory_message()
 
-    def step(self, action):
+    def step(self, action, start_time):
         # Ejecutar la acción
         if action == 1:
             self.player.sprite.move(-1)
@@ -201,48 +200,47 @@ class Game:
             self.player.sprite.shoot_laser()
             self.player.sprite.ready = False
             self.player.sprite.laser_time = pygame.time.get_ticks()
-            self.player.sprite.laser_sound.play()
+            #self.player.sprite.laser_sound.play()
 
         self.run()
 
         # Calcular recompensa
         done = self.lives <= 0  # Indica si el juego terminó
-
-        # Capturar el estado del juego
-        state = self.get_state_image()  # Ahora devuelve un diccionario
-        state = np.expand_dims(state, axis=0)  # Agregar una dimensión para el batch
+        state = self.get_game_state()
 
         # Calcular recompensa utilizando el diccionario
-        reward = self.calculate_reward(state, done)
+        reward = self.calculate_reward(state, done, start_time)
         
         # Devolver el nuevo estado, recompensa, indicador de fin
         return state, reward, done
     
-    def get_state_image(self):
-        # Obtener la imagen de estado actual del juego
-        self.render_game()  # Dibuja todos los sprites en la pantalla
 
-        # Capturar la superficie del juego
-        state_image = pygame.surfarray.array3d(self.screen)  # Obtener el arreglo de la superficie
-        state_image = np.transpose(state_image, (1, 0, 2))  # Cambiar la forma a (alto, ancho, canales)
-
-        return state_image  # Devolver solo la imagen como un arreglo de numpy
-
-    def calculate_reward(self, state, done):
+    def calculate_reward(self, state, done, start_time):
         reward = 0
 
         # Recompensa por destruir un enemigo (basado en incremento de puntaje)
         current_score = self.score
         if current_score > self.last_score:
-            reward += (current_score - self.last_score)  # Ajusta el multiplicador según sea necesario
+            reward += (current_score - self.last_score) 
             self.last_score = current_score
 
         if self.lives < self.last_lives:
-            reward -= 1  # Ajusta la penalización si se pierde una vida
+            reward -= 1000  
+            print (f"-1 Vida. Te quedan {self.lives}")
             self.last_lives = self.lives
 
-        if done:
-            reward -= 5  # Penalización adicional si se pierde el juego
+        if self.lives == 0:
+            reward -= 500  # Penalización adicional si se pierde el juego
+            print("Muerto")
+
+        if not self.aliens.sprites():
+            reward += 2000 - (time.time() - start_time)
+        
+        # Verificar si el jugador está tocando los bordes de la pantalla
+        if self.player.sprite.rect.left <= 0:
+            reward -= 50
+        elif self.player.sprite.rect.right >= self.screen_width:
+            reward -= 50
 
         return reward
     
@@ -289,32 +287,51 @@ class Game:
         self.extra = pygame.sprite.GroupSingle()
         self.extra_spawn_time = randint(40, 80)
 
-        # Obtener la imagen inicial del estado del juego
-        initial_image = self.get_state_image()  # Esto ahora devolverá solo el arreglo de numpy
+    def get_closest_n(self, sprite_group, position, n=5):
+        """Devuelve las n posiciones relativas en el eje x más cercanas en el grupo, normalizadas por el ancho de la pantalla."""
+        distances = []
 
-        # Devolver como un diccionario
-        return {'image': initial_image}  # Esto es correcto y debería funcionar
+        for sprite in sprite_group.sprites():
+            # Calcula la distancia en el eje x y normaliza
+            distance_x = (sprite.rect.centerx - position[0]) / self.screen_width
+            distances.append((sprite, abs(distance_x)))  # Guarda la distancia absoluta y el sprite
 
-if __name__ == '__main__':
-    pygame.init()
-    screen_width = 800
-    screen_height = 600
-    game = Game(screen_width, screen_height)
-    clock = pygame.time.Clock()
+        # Ordena por la distancia en el eje x y selecciona los n más cercanos
+        closest_sprites = sorted(distances, key=lambda x: x[1])[:n]
 
-    ALIENLASER = pygame.USEREVENT + 1
-    pygame.time.set_timer(ALIENLASER, 800)
+        # Devuelve solo las posiciones relativas normalizadas en el eje x
+        closest_x_distances = [(sprite.rect.centerx - position[0]) / self.screen_width for sprite, _ in closest_sprites]
 
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == ALIENLASER:
-                game.alien_shoot()
+        # Si hay menos de n objetos, rellena con valores por defecto (por ejemplo, 0.0)
+        while len(closest_x_distances) < n:
+            closest_x_distances.append(0.0)  # Valor neutro o muy alto para indicar ausencia
 
-        game.screen.fill((30, 30, 30))
-        game.run()
+        return closest_x_distances
 
-        pygame.display.flip()
-        clock.tick(60)
+
+    def get_game_state(self):
+        """Obtiene el estado del juego, incluyendo la posición del jugador y las posiciones relativas de enemigos y láseres."""
+        
+        # 1. Obtener la posición normalizada del jugador en el eje x
+        player_pos = self.player.sprite.rect.center
+        player_x_normalized = player_pos[0] / self.screen_width  # Normaliza en el eje x
+
+        # 2. Obtener las posiciones relativas de los 5 aliens más cercanos en el eje x
+        alien_x_distances = self.get_closest_n(self.aliens, player_pos, n=5)
+
+        # 3. Obtener las posiciones relativas de los 5 láseres enemigos más cercanos en el eje x
+        enemy_laser_x_distances = self.get_closest_n(self.alien_lasers, player_pos, n=5)
+
+        # 4. Direccion general de los enemigos en el eje x (aproximación simple)
+        enemy_direction = 0.5 if any(sprite.rect.centerx > player_pos[0] for sprite in self.aliens.sprites()) else -0.5
+
+        # Crear el diccionario de estado del juego
+        game_state = {
+            'player_position': player_x_normalized,        # Posición normalizada del jugador en el eje x
+            'alien_x_distances': alien_x_distances,        # Posiciones relativas en el eje x de los aliens más cercanos
+            'enemy_laser_x_distances': enemy_laser_x_distances,  # Posiciones relativas en el eje x de los láseres enemigos
+            'enemy_direction': enemy_direction             # Dirección general de los enemigos en el eje x
+        }
+        
+        return game_state
+

@@ -12,8 +12,6 @@ class Player(pygame.sprite.Sprite):
         self.laser_time = 0
         self.laser_cooldown = 1000
         self.lasers = pygame.sprite.Group()
-        self.laser_sound = pygame.mixer.Sound('../audio/laser.wav')
-        self.laser_sound.set_volume(0.5)
 
     def move(self, direction):
         # Mover al jugador en la dirección especificada
@@ -31,7 +29,6 @@ class Player(pygame.sprite.Sprite):
             self.shoot_laser()
             self.ready = False
             self.laser_time = pygame.time.get_ticks()
-            self.laser_sound.play()
 
     def recharge(self):
         if not self.ready:
