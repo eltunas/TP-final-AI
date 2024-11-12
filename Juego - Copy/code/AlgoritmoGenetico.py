@@ -21,8 +21,6 @@ class GeneticAlgorithm:
         self.num_generations = num_generations
         self.input_size = input_size
         self.output_size = output_size
-        self.loadModel = False
-        self.modelLoaded = False
         self.modelToLoadPath = './best_model_weights_gen_205.weights.h5'
         self.population = self.initialize_population()
         self.level = 2
@@ -51,9 +49,6 @@ class GeneticAlgorithm:
         optimizer = Adam(learning_rate=0.001)  
 
         model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
-
-        if self.loadModel:
-            model = tf.keras.models.load_model('best_model_gen_200.keras')
 
         return model
 
@@ -92,15 +87,6 @@ class GeneticAlgorithm:
             shoot_speed = 600
             time_limit = 120
 
-            #if generation > 50:
-                #time_limit = 180
-            #elif generation > 30:
-                #time_limit = 120
-            #elif generation>15:
-                #time_limit=60
-
-
-
         elif self.level == 3:
             shoot = True
             shoot_speed = 300
@@ -130,7 +116,7 @@ class GeneticAlgorithm:
             input_data = np.nan_to_num(input_data, nan=0, posinf=1e6, neginf=-1e6)
             input_data = np.expand_dims(input_data, axis=0)
 
-            epsilon = max(0.01, 1 * (0.95 ** generation)) # Decaimiento de exploración
+            epsilon = max(0.01, 1 * (0.97 ** generation)) # Decaimiento de exploración
             
             action_probs = model.predict(input_data, verbose=0)[0]
 

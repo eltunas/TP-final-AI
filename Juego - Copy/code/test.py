@@ -1,27 +1,12 @@
-import tensorflow as tf
-import pygame
-import numpy as np
-import sys
-import time
-import imageio
-
-from main import Game  # Asegúrate de importar la clase Game correctamente
 
 import tensorflow as tf
-from main import Game  # Asegúrate de importar la clase Game correctamente
+from main import Game 
 import pygame
 import sys
 import numpy as np
 import time
 import imageio.v2 as imageio
 
-import tensorflow as tf
-from main import Game
-import pygame
-import sys
-import numpy as np
-import time
-import imageio.v2 as imageio
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -108,7 +93,7 @@ def play_game(model, game, output_video_path="gameplay_video.mp4"):
 # Lista para almacenar los puntajes de cada juego
 scores = []
 
-# Ejecutar el juego 30 veces y almacenar los puntajes
+# Ejecutar el juego i veces y almacenar los puntajes
 for i in range(1):
     video_path = f"gameplay_video{i-1}.mp4"
     score = play_game(loaded_model, game, output_video_path=video_path)
