@@ -1,5 +1,7 @@
 import pygame 
 from laser import Laser
+import time
+
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, pos, constraint, speed):
@@ -15,6 +17,8 @@ class Player(pygame.sprite.Sprite):
         self.lasers = pygame.sprite.Group()
         self.laser_sound = pygame.mixer.Sound('../audio/laser.wav')
         self.laser_sound.set_volume(0.5)
+        self.last_shot_time = 0
+        self.shot_cooldown = 1
 
     def move(self, direction):
         # Mover al jugador en la dirección especificada
@@ -46,8 +50,14 @@ class Player(pygame.sprite.Sprite):
         if self.rect.right >= self.max_x_constraint:
             self.rect.right = self.max_x_constraint
 
+    def can_shoot(self):
+        # Verificar si el tiempo actual es suficiente para disparar de nuevo
+        return time.time() - self.last_shot_time >= self.shot_cooldown
+
     def shoot_laser(self):
-        self.lasers.add(Laser(self.rect.center, -8, self.rect.bottom))
+        if self.can_shoot():
+            self.last_shot_time = time.time()
+            self.lasers.add(Laser(self.rect.center, -8, self.rect.bottom))
 
     def update(self):
         self.get_input()

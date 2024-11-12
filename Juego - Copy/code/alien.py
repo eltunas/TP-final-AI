@@ -9,11 +9,11 @@ class Alien(pygame.sprite.Sprite):
         
         # Valor de los aliens según color
         if color == 'red': 
-            self.value = 300
+            self.value = 100
         elif color == 'green': 
-            self.value = 400
+            self.value = 200
         else: 
-            self.value = 500
+            self.value = 300
         
         # Inicializar velocidad en x y y
         self.velocity = [0, 0]

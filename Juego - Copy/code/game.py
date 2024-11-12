@@ -19,7 +19,7 @@ script_dir = Path(__file__).resolve().parent
 os.chdir(script_dir)
 
 class PlayerGame:
-    def __init__(self, screen_width, screen_height, player_id):
+    def __init__(self, screen_width, screen_height, generation, player_id):
         self.player_id = player_id
         self.screen_width = screen_width
         self.screen_height = screen_height
@@ -36,7 +36,7 @@ class PlayerGame:
         self.player = pygame.sprite.GroupSingle(player_sprite)
 
         # Health and score setup
-        self.lives = 2
+        self.lives = 3
         self.score = 0
         self.font = pygame.font.Font('../font/Pixeled.ttf', 20)
 
@@ -62,14 +62,40 @@ class PlayerGame:
         self.last_score = 0
         self.last_lives = 3
         self.initial_lives = 3
+        self.kills = 0
+        self.reach15 = False
+        self.reach10 = False
+        self.reach5 = False
 
         # Configuración de temporizador para disparos de aliens
         self.ALIENLASER_EVENT = pygame.USEREVENT + 1
         pygame.time.set_timer(self.ALIENLASER_EVENT, 600)  # Cada 600 ms
 
-        # Límite de tiempo para cada jugador
-        self.time_limit = 45  # Límite de tiempo en segundos
+        if (generation <= 15):
+            # Límite de tiempo para cada jugador
+            self.time_limit = 30  # Límite de tiempo en segundos
+        elif (generation > 15 and generation <= 30):
+            # Límite de tiempo para cada jugador
+            self.time_limit = 60  # Límite de tiempo en segundos
+        else:
+            # Límite de tiempo para cada jugador
+            self.time_limit = 120  # Límite de tiempo en segundos
+
         self.start_time = time.time()  # Guarda el tiempo de inicio
+
+        self.last_life_loss_time = 0
+
+    def check_border_collision(self):
+        current_time = time.time()
+        
+        # Verifica si el jugador está tocando los bordes de la pantalla
+        if self.player.sprite.rect.left <= 0 or self.player.sprite.rect.right >= self.screen_width:
+            # Comprueba si ha pasado al menos 1 segundo desde la última pérdida de vida
+            if current_time - self.last_life_loss_time >= 5:
+                self.lives -= 1
+                #logging.info(f'Player {self.player_id} hit the border. Remaining lives: {self.lives}')
+                self.last_life_loss_time = current_time  # Actualiza el tiempo de la última pérdida de vida
+
 
     def run(self):
         # Actualizar lógica del juego
@@ -80,6 +106,8 @@ class PlayerGame:
         self.alien_position_checker()
         self.extra_alien_timer()
         self.collision_checks()
+
+        self.check_border_collision()
 
         # Manejar el evento de disparo de aliens
         for event in pygame.event.get():
@@ -130,7 +158,7 @@ class PlayerGame:
     def alien_shoot(self):
         if self.aliens:
             random_alien = choice(self.aliens.sprites())
-            laser_sprite = Laser(random_alien.rect.center, 6, self.screen_height)
+            laser_sprite = Laser(random_alien.rect.center, 3, self.screen_height)
             self.alien_lasers.add(laser_sprite)
 
     def extra_alien_timer(self):
@@ -148,13 +176,12 @@ class PlayerGame:
                 aliens_hit = pygame.sprite.spritecollide(laser, self.aliens, True)
                 if aliens_hit:
                     for alien in aliens_hit:
-                        self.score += alien.value
-                        logging.info(f'Player {self.player_id} destroyed an alien. Current score: {self.score}')
+                        self.kills += 1
+                        self.score += alien.value * (1 + self.kills/5)
                     laser.kill()
 
                 if pygame.sprite.spritecollide(laser, self.extra, True):
                     self.score += 500
-                    logging.info(f'Player {self.player_id} destroyed an extra alien. Current score: {self.score}')
                     laser.kill()
 
         if self.alien_lasers:
@@ -165,7 +192,6 @@ class PlayerGame:
                 if pygame.sprite.spritecollide(laser, self.player, False):
                     laser.kill()
                     self.lives -= 1
-                    logging.info(f'Player {self.player_id} was hit. Remaining lives: {self.lives}')
 
         for alien in self.aliens:
             if pygame.sprite.spritecollide(alien, self.blocks, True):
@@ -173,7 +199,6 @@ class PlayerGame:
 
             if pygame.sprite.spritecollide(alien, self.player, False):
                 self.lives = 0
-                logging.info(f'Player {self.player_id} collided with an alien and lost all lives.')
 
     def display_lives(self):
         for live in range(self.lives - 1):
@@ -202,19 +227,14 @@ class PlayerGame:
             self.player.sprite.shoot_laser()
             self.player.sprite.ready = False
             self.player.sprite.laser_time = pygame.time.get_ticks()
+        elif action == 4:
+            self.player.sprite.move(-1)  # Moverse a la izquierda y dispara
+            self.player.sprite.shoot_laser()
+        elif action == 5:
+            self.player.sprite.move(1)  # Moverse a la derecha, no dispara
+        
 
         self.run()
-
-        # Verificar si el jugador está tocando los bordes de la pantalla
-        if self.player.sprite.rect.left <= 0:
-            logging.info(f'Player {self.player_id} hit the left border.')
-            # Aquí puedes añadir lógica adicional, como restar una vida o penalizar de otra forma
-            self.lives -= 1
-        elif self.player.sprite.rect.right >= self.screen_width:
-            logging.info(f'Player {self.player_id} hit the right border.')
-            # Aquí también puedes añadir lógica adicional, como restar una vida
-            self.lives -= 1
-
 
         # Calcular recompensa
         done = self.lives <= 0  # Indica si el juego terminó
@@ -229,9 +249,10 @@ class PlayerGame:
         #ARREGLAR PARA MULTIPLES PLAYER
         if elapsed_time >= self.time_limit:
             done = True  # Indica que el juego ha terminado
-        print('Enemigos restante: ', len(self.aliens))
-        if(40>len(self.aliens) ):
+
+        if(0 == len(self.aliens)):
             done = True
+
         
         # Devolver el nuevo estado, recompensa, indicador de fin
         return state, reward, done
@@ -239,23 +260,58 @@ class PlayerGame:
     def calculate_reward(self, state, done, action):
         reward = 0
 
-        if action == 3:
-            reward += 5
+        # Recompensa por disparar
+        if action == 3:  # Acción de disparo
+            reward += 2  # Motiva a disparar activamente
 
         # Recompensa por destruir un enemigo (basado en incremento de puntaje)
         current_score = self.score
         if current_score > self.last_score:
-            reward += (current_score - self.last_score)  # Ajusta el multiplicador según sea necesario
-            logging.info(f'Player {self.player_id} scored points. Reward: {reward}')
+            reward += (current_score - self.last_score) # Aumenta el valor por enemigo destruido
             self.last_score = current_score
 
+        # Penalización significativa por perder una vida
         if self.lives < self.last_lives:
-            reward -= 300  # Ajusta la penalización si se pierde una vida
-            logging.info(f'Player {self.player_id} lost a life. Penalty: -200')
+            reward -= 1000
             self.last_lives = self.lives
 
-        if(40>len(self.aliens) ):
-            reward += 1000
+        # Penalización por quedarse alineado con un láser sin moverse
+        if state[5] == 1 and action == 0:  # Si hay un láser alineado y el jugador no se mueve
+            reward -= 30  # Penalización adicional
+
+        # Recompensa por evadir un láser (movimiento cuando un láser está cerca)
+        closest_lasers, distances = self.get_n_closest(self.alien_lasers, self.player.sprite.rect.center, n=1)
+        if distances:  # Verificar que haya láseres en la lista
+            closest_laser_distance = min(distances)
+            if closest_laser_distance < 40 and action in [1, 2, 4, 5]:  # Si un láser está muy cerca y el jugador se mueve
+                reward += 10  # Recompensa por evadir con éxito
+
+
+        #Si esta en el borde recompensarlo si se aleja, penalizarlo si no
+        if self.player.sprite.rect.left <= 0: 
+            if  action == 1 or action == 4:
+                reward += 10
+            else:
+                reward -= 3
+        
+        if self.player.sprite.rect.right >= self.screen_width:
+            if  action == 2 or action == 5:
+                reward += 10
+            else:
+                reward -= 3
+
+        #Recompensarlo por progreso
+        if(len(self.aliens) <= 15 and not self.reach15):
+            self.reach15 = True
+            reward += 10000
+
+        if(len(self.aliens) <= 10 and not self.reach10):
+            self.reach10 = True
+            reward += 50000
+
+        if(len(self.aliens) <= 5 and not self.reach5):
+            self.reach5 = True
+            reward += 100000
 
         return reward
     
@@ -292,6 +348,8 @@ class PlayerGame:
         self.alien_setup(rows=6, cols=8)
         self.alien_direction = 1
 
+        self.kills = 0
+
         # Extra setup
         self.extra = pygame.sprite.GroupSingle()
         self.extra_spawn_time = randint(40, 80)
@@ -309,39 +367,110 @@ class PlayerGame:
         
         return closest_sprite, min_distance
 
+    def get_n_closest(self, sprite_group, position, n=5):
+        sprites_with_distance = []
+
+        # Calcular la distancia de cada sprite y almacenarla en una lista
+        for sprite in sprite_group.sprites():
+            distance = np.linalg.norm(np.array(sprite.rect.center) - np.array(position))
+            sprites_with_distance.append((sprite, distance))
+
+        # Ordenar los sprites por distancia y obtener los n más cercanos
+        sorted_sprites = sorted(sprites_with_distance, key=lambda x: x[1])[:n]
+
+        # Separar los sprites y las distancias
+        closest_sprites = [sprite for sprite, _ in sorted_sprites]
+        distances = [distance for _, distance in sorted_sprites]
+
+        return closest_sprites, distances
+
     def get_game_state(self):
+        numCloseAlien = 3
+        numCloseLaser = 5
         player_pos = self.player.sprite.rect.center
+        player_velocity = self.player.sprite.velocity if hasattr(self.player.sprite, 'velocity') else (0, 0)
 
-        # Alien más cercano
-        closest_alien, alien_distance = self.get_closest(self.aliens, player_pos)
+        # Distancias a los bordes del juego (normalizadas entre -1 y 1)
+        screen_center_x = self.screen_width / 2
+        dplayer_relative_x = (self.player.sprite.rect.center[0] - screen_center_x) / screen_center_x  # Normalizado entre -1 y 1
 
-        # Láser de alien más cercano
-        closest_alien_laser, laser_distance = self.get_closest(self.alien_lasers, player_pos)
+        # Obtener los alienígenas más cercanos y normalizar sus posiciones
+        closest_aliens, alien_distances = self.get_n_closest(self.aliens, player_pos, n=numCloseAlien)
+        alien_data = []
+        for alien, distance in zip(closest_aliens, alien_distances):
+            relative_x = (alien.rect.center[0] - player_pos[0]) / self.screen_width  # Normalizado entre -1 y 1
+            relative_y = (alien.rect.center[1] - player_pos[1]) / self.screen_height  # Normalizado entre -1 y 1
+            alien_velocity_x = (alien.velocity[0] if hasattr(alien, 'velocity') else 0) / 10  # Suponiendo un máximo de velocidad 10
 
-        # Obstacle más cercano
-        closest_obstacle, obstacle_distance = self.get_closest(self.blocks, player_pos)
+            alien_data.extend([
+                relative_x, relative_y, alien_velocity_x
+            ])
 
-        # Crear un diccionario con el estado
+        # Rellenar con valores por defecto si no hay suficientes alienígenas
+        while len(alien_data) < numCloseAlien * 3:
+            alien_data.extend([0, 0, 0])
+
+        # Obtener los láseres más cercanos y normalizar sus posiciones relativas
+        closest_alien_lasers, laser_distances = self.get_n_closest(self.alien_lasers, player_pos, n=numCloseLaser)
+
+        for laser in closest_alien_lasers:
+            laser.set_closest_status(True)
+
+        for laser in self.alien_lasers:
+            if laser not in closest_alien_lasers:
+                laser.set_closest_status(False)
+
+        laser_data = []
+        for laser, distance in zip(closest_alien_lasers, laser_distances):
+            relative_x = (laser.rect.center[0] - player_pos[0]) / self.screen_width  # Normalizado entre -1 y 1
+            relative_y = (laser.rect.center[1] - player_pos[1]) / self.screen_height  # Normalizado entre -1 y 1
+            laser_data.extend([
+                relative_y, relative_x
+            ])
+
+        # Rellenar con valores por defecto si no hay suficientes láseres
+        while len(laser_data) < numCloseLaser * 2:
+            laser_data.extend([0, 0])
+
+        # Normalizar la velocidad del jugador en función de un valor máximo esperado (ej. máximo 10)
+        player_velocity_x = player_velocity[0] / 10  # Normalizar según la velocidad máxima esperada
+
+        # Indicador de alineación con aliens y láseres
+        is_alien_aligned = int(any(alien.rect.centerx == player_pos[0] for alien in self.aliens))
+        is_laser_aligned = int(any(laser.rect.centerx == player_pos[0] for laser in self.alien_lasers))
+
+        # Dirección de movimiento de los alienígenas
+        alien_direction = self.alien_direction  # Asumiendo -1 para izquierda, 1 para derecha
+
+        # Tiempo desde el último disparo del jugador (normalizado a un máximo de 1 segundo)
+        #time_since_last_shot = (time.time() - self.player.sprite.last_shot_time) if hasattr(self.player.sprite, 'last_shot_time') else 1
+
+        # Crear el estado del juego como un vector
         game_state = [
-            player_pos[0], player_pos[1],
-            closest_alien.rect.center[0] if closest_alien else -1, closest_alien.rect.center[1] if closest_alien else -1, alien_distance,
-            closest_alien_laser.rect.center[0] if closest_alien_laser else -1, closest_alien_laser.rect.center[1] if closest_alien_laser else -1, laser_distance,
-            closest_obstacle.rect.center[0] if closest_obstacle else -1, #closest_obstacle.rect.center[1] if closest_obstacle else -1, obstacle_distance
+            player_velocity_x,      # Velocidad del jugador normalizada
+            dplayer_relative_x,     # Posición relativa en x normalizada
+            *alien_data,            # Datos normalizados de los alienígenas más cercanos
+            *laser_data,            # Datos normalizados de los láseres más cercanos
+            is_alien_aligned,       # Si tiene un alien alineado en x
+            is_laser_aligned,       # Si tiene un laser aliendo en X
+            alien_direction,        # la direccion de los aliens
+            self.lives / self.initial_lives # Las vidas entre 0 y 1
         ]
 
         return game_state
 
 class Game:
-    def __init__(self, screen_width, screen_height, num_players, render=True):
+    def __init__(self, screen_width, screen_height, num_players, gen, render=True):
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.render = render
         self.num_players = num_players
         self.players = []
+        self.clock = pygame.time.Clock()
 
         # Crear una instancia de PlayerGame para cada jugador
         for i in range(num_players):
-            self.players.append(PlayerGame(screen_width, screen_height, player_id=i))
+            self.players.append(PlayerGame(screen_width, screen_height, gen, player_id=i))
 
         # Inicializar la pantalla solo si se requiere renderizado
         if self.render:
@@ -350,7 +479,11 @@ class Game:
         else:
             self.screen = None
 
-    def run(self):
+    def run(self, background=False):
+
+        # Definir el valor de los FPS según si estamos en background o no
+        fps = 60 if not background else 600  # Aumentar significativamente los FPS en background
+        self.clock.tick(fps)
         self.screen.fill((0, 0, 0))
 
         # Actualizar lógica de cada jugador de manera independiente
